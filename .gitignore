@@ -1,0 +1,12 @@
+build
+build-*/
+.cache/
+compile_commands.json
+*.o
+*.obj
+*.a
+*.so
+.vscode/
+.idea/
+__pycache__/
+*.egg-info/

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "version.hpp"
+#include "tiramisu/core/version.hpp"
 
 TEST(Version, ReturnsExpectedString) {
   EXPECT_STREQ(tiramisu::version_string(), "0.1.0");

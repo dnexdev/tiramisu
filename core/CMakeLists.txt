@@ -1,5 +1,8 @@
 add_library(tiramisu_core
   src/version.cpp
+  src/storage.cpp
+  src/tensor.cpp
+  src/dtype.cpp
 )
 
 target_include_directories(tiramisu_core PUBLIC

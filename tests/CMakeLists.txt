@@ -1,5 +1,7 @@
 add_executable(tiramisu_tests
   core/version_test.cpp
+  core/storage_test.cpp
+  core/tensor_test.cpp
 )
 
 target_link_libraries(tiramisu_tests PRIVATE

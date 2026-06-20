@@ -1,4 +1,4 @@
-#include "version.hpp"
+#include "tiramisu/core/version.hpp"
 
 namespace tiramisu {
 

@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "version.hpp"
+#include "tiramisu/core/version.hpp"
 
 int main() {
   std::cout << "tiramisu version: " << tiramisu::version_string() << "\n";

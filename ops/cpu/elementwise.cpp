@@ -2,7 +2,7 @@
 #include "tiramisu/ops/broadcast.hpp"
 #include <stdexcept>
 #include <vector>
-#include <cmath>
+#include <algorithm>
 
 namespace tiramisu {
 namespace ops {

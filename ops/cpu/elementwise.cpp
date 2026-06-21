@@ -2,6 +2,7 @@
 #include "tiramisu/ops/broadcast.hpp"
 #include <stdexcept>
 #include <vector>
+#include <cmath>
 
 namespace tiramisu {
 namespace ops {
@@ -24,10 +25,11 @@ void pad_to_rank(const std::vector<int64_t>& shape, const std::vector<int64_t>& 
   }
 }
 
-
-Tensor add(const Tensor& a, const Tensor& b) {
+// Universal N-dimensional Broadcasting Binary Engine
+template <typename Func>
+Tensor apply_binary_op(const Tensor &a, const Tensor &b, Func op) {
   if (a.dtype() != DType::Float32 || b.dtype() != DType::Float32) {
-    throw std::runtime_error("ops::add currently only supports Float32 scaffold.");
+    throw std::runtime_error("Binary ops currently only support Float32.");
   }
 
   std::vector<int64_t> out_shape = broadcast_shapes(a.shape(), b.shape());
@@ -35,45 +37,7 @@ Tensor add(const Tensor& a, const Tensor& b) {
   int64_t rank = out_shape.size();
 
   std::vector<int64_t> a_shape, a_strides, b_shape, b_strides;
-  pad_to_rank(a.shape(), a.strides(), rank, a_shape, a_strides);
-  pad_to_rank(b.shape(), b.strides(), rank, b_shape, b_strides);
 
-  const float* a_data = a.data<float>();
-  const float* b_data = b.data<float>();
-  float *out_data = out.data<float>();
-  
-  int64_t total_elements = out.numel();
-  // const auto& out_strides = out.strides();
-
-  for (int64_t i = 0; i < total_elements; i++) {
-    int64_t temp = i;
-    int64_t flat_idx_a = 0;
-    int64_t flat_idx_b = 0;
-
-    for (int d = rank - 1; d >= 0; d--) {
-      int64_t coord = temp % out_shape[d];
-
-      flat_idx_a += (coord % a_shape[d]) * a_strides[d];
-      flat_idx_b += (coord % b_shape[d]) * b_strides[d];
-      temp /= out_shape[d];
-    }
-
-    out_data[i] = a_data[flat_idx_a] + b_data[flat_idx_b];
-  }
-
-  return out;
-}
-
-Tensor mul(const Tensor& a, const Tensor& b) {
-  if (a.dtype() != DType::Float32 || b.dtype() != DType::Float32) {
-    throw std::runtime_error("ops::mul currently only supports Float32 scaffold.");
-  }
-
-  std::vector<int64_t> out_shape = broadcast_shapes(a.shape(), b.shape());
-  Tensor out(out_shape, a.dtype(), a.device());
-  int64_t rank = out_shape.size();
-
-  std::vector<int64_t> a_shape, a_strides, b_shape, b_strides;
   pad_to_rank(a.shape(), a.strides(), rank, a_shape, a_strides);
   pad_to_rank(b.shape(), b.strides(), rank, b_shape, b_strides);
 
@@ -95,10 +59,44 @@ Tensor mul(const Tensor& a, const Tensor& b) {
       temp /= out_shape[d];
     }
 
-    out_data[i] = a_data[flat_idx_a] * b_data[flat_idx_b];
+    out_data[i] = op(a_data[flat_idx_a], b_data[flat_idx_b]);
   }
 
   return out;
 }
+
+// Universal Contiguous Unary Engine
+template <typename Func>
+Tensor apply_unary_op(const Tensor& t, Func op) {
+  if (t.dtype() != DType::Float32) {
+    throw std::runtime_error("Unary ops currently only support Float32");
+  }
+
+  Tensor c_t = t.contiguous();
+  Tensor out(c_t.shape(), c_t.dtype(), c_t.device());
+
+  const float* in_data = c_t.data<float>();
+  float* out_data = out.data<float>();
+  int64_t total = out.numel();
+
+  for (int64_t i = 0; i < total; i++) {
+    out_data[i] = op(in_data[i]);
+  }
+
+  return out;
+}
+
+
+
+Tensor add(const Tensor& a, const Tensor& b) { return tiramisu::ops::apply_binary_op(a, b, [](float x, float y) { return x + y; }); }
+Tensor sub(const Tensor& a, const Tensor& b) { return tiramisu::ops::apply_binary_op(a, b, [](float x, float y) { return x - y; }); }
+Tensor mul(const Tensor& a, const Tensor& b) { return tiramisu::ops::apply_binary_op(a, b, [](float x, float y) { return x * y; }); }
+Tensor div(const Tensor& a, const Tensor& b) { return tiramisu::ops::apply_binary_op(a, b, [](float x, float y) { return x / y; }); }
+
+Tensor neg(const Tensor& t)  { return tiramisu::ops::apply_unary_op(t, [](float x) { return -x; }); }
+Tensor exp(const Tensor& t)  { return tiramisu::ops::apply_unary_op(t, [](float x) { return std::exp(x); }); }
+Tensor log(const Tensor& t)  { return tiramisu::ops::apply_unary_op(t, [](float x) { return std::log(x); }); }
+Tensor relu(const Tensor& t) { return tiramisu::ops::apply_unary_op(t, [](float x) { return std::max(0.0f, x); }); }
+
 }
 }

@@ -95,3 +95,39 @@ TEST(OpsTest, Matmul) {
     // (4*8 + 5*10 + 6*12) = 154
     EXPECT_FLOAT_EQ(c.at<float>({1, 1}), 154);
 }
+
+TEST(OpsTest, BinaryMath) {
+    tiramisu::Tensor a({2}); a.at<float>({0}) = 10; a.at<float>({1}) = 20;
+    tiramisu::Tensor b({2}); b.at<float>({0}) = 2;  b.at<float>({1}) = 5;
+
+    auto t_sub = tiramisu::ops::sub(a, b);
+    EXPECT_FLOAT_EQ(t_sub.at<float>({0}), 8);
+    EXPECT_FLOAT_EQ(t_sub.at<float>({1}), 15);
+
+    auto t_div = tiramisu::ops::div(a, b);
+    EXPECT_FLOAT_EQ(t_div.at<float>({0}), 5);
+    EXPECT_FLOAT_EQ(t_div.at<float>({1}), 4);
+}
+
+TEST(OpsTest, UnaryMath) {
+    tiramisu::Tensor a({3});
+    a.at<float>({0}) = -5.0f;
+    a.at<float>({1}) = 0.0f;
+    a.at<float>({2}) = 3.0f;
+
+    auto t_neg = tiramisu::ops::neg(a);
+    EXPECT_FLOAT_EQ(t_neg.at<float>({0}), 5.0f);
+    EXPECT_FLOAT_EQ(t_neg.at<float>({2}), -3.0f);
+
+    auto t_relu = tiramisu::ops::relu(a);
+    EXPECT_FLOAT_EQ(t_relu.at<float>({0}), 0.0f);
+    EXPECT_FLOAT_EQ(t_relu.at<float>({2}), 3.0f);
+
+    // Exp / Log test
+    tiramisu::Tensor b({1}); b.at<float>({0}) = 1.0f;
+    auto t_exp = tiramisu::ops::exp(b);
+    EXPECT_NEAR(t_exp.at<float>({0}), 2.71828f, 1e-4);
+    
+    auto t_log = tiramisu::ops::log(t_exp);
+    EXPECT_NEAR(t_log.at<float>({0}), 1.0f, 1e-4);
+}

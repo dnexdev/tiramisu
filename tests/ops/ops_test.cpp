@@ -1,14 +1,17 @@
 #include <gtest/gtest.h>
 #include "tiramisu/core/tensor.hpp"
-#include "tiramisu/core/ops.hpp"
+#include "tiramisu/ops/broadcast.hpp"
+#include "tiramisu/ops/elementwise.hpp"
+#include "tiramisu/ops/matmul.hpp"
+#include "tiramisu/ops/reduce.hpp"
 
 TEST(OpsTest, BroadcastShapes) {
-    EXPECT_EQ(tiramisu::broadcast_shapes({3, 4}, {3, 4}), std::vector<int64_t>({3, 4}));
-    EXPECT_EQ(tiramisu::broadcast_shapes({3, 4}, {1}), std::vector<int64_t>({3, 4}));
-    EXPECT_EQ(tiramisu::broadcast_shapes({3, 4}, {1, 4}), std::vector<int64_t>({3, 4}));
-    EXPECT_EQ(tiramisu::broadcast_shapes({3, 4}, {3, 1}), std::vector<int64_t>({3, 4}));
-    EXPECT_EQ(tiramisu::broadcast_shapes({2, 3, 4}, {4}), std::vector<int64_t>({2, 3, 4}));
-    EXPECT_THROW(tiramisu::broadcast_shapes({3, 4}, {3, 5}), std::invalid_argument);
+    EXPECT_EQ(tiramisu::ops::broadcast_shapes({3, 4}, {3, 4}), std::vector<int64_t>({3, 4}));
+    EXPECT_EQ(tiramisu::ops::broadcast_shapes({3, 4}, {1}), std::vector<int64_t>({3, 4}));
+    EXPECT_EQ(tiramisu::ops::broadcast_shapes({3, 4}, {1, 4}), std::vector<int64_t>({3, 4}));
+    EXPECT_EQ(tiramisu::ops::broadcast_shapes({3, 4}, {3, 1}), std::vector<int64_t>({3, 4}));
+    EXPECT_EQ(tiramisu::ops::broadcast_shapes({2, 3, 4}, {4}), std::vector<int64_t>({2, 3, 4}));
+    EXPECT_THROW(tiramisu::ops::broadcast_shapes({3, 4}, {3, 5}), std::invalid_argument);
 }
 
 
@@ -22,7 +25,7 @@ TEST(OpsTest, AddSameShape) {
     b.at<float>({0, 0}) = 5; b.at<float>({0, 1}) = 6;
     b.at<float>({1, 0}) = 7; b.at<float>({1, 1}) = 8;
 
-    tiramisu::Tensor c = tiramisu::add(a, b);
+    tiramisu::Tensor c = tiramisu::ops::add(a, b);
 
     EXPECT_FLOAT_EQ(c.at<float>({0, 0}), 6);
     EXPECT_FLOAT_EQ(c.at<float>({0, 1}), 8);
@@ -46,7 +49,7 @@ TEST(OpsTest, AddBroadcast) {
     row_vector.at<float>({0, 2}) = 30;
 
     // Should broadcast row_vector to both rows
-    tiramisu::Tensor c = tiramisu::add(matrix, row_vector);
+    tiramisu::Tensor c = tiramisu::ops::add(matrix, row_vector);
 
     EXPECT_EQ(c.shape(), std::vector<int64_t>({2, 3}));
     EXPECT_FLOAT_EQ(c.at<float>({0, 0}), 11);
@@ -60,8 +63,8 @@ TEST(OpsTest, SumAndMean) {
     a.at<float>({2}) = 6;
     a.at<float>({3}) = 8;
 
-    tiramisu::Tensor s = tiramisu::sum(a);
-    tiramisu::Tensor m = tiramisu::mean(a);
+    tiramisu::Tensor s = tiramisu::ops::sum(a);
+    tiramisu::Tensor m = tiramisu::ops::mean(a);
 
     EXPECT_FLOAT_EQ(s.at<float>({0}), 20);
     EXPECT_FLOAT_EQ(m.at<float>({0}), 5);
@@ -79,7 +82,7 @@ TEST(OpsTest, Matmul) {
     b.at<float>({1, 0}) = 9;  b.at<float>({1, 1}) = 10;
     b.at<float>({2, 0}) = 11; b.at<float>({2, 1}) = 12;
 
-    tiramisu::Tensor c = tiramisu::matmul(a, b);
+    tiramisu::Tensor c = tiramisu::ops::matmul(a, b);
 
     EXPECT_EQ(c.shape(), std::vector<int64_t>({2, 2}));
     

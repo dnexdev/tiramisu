@@ -52,11 +52,11 @@ class Tensor {
     // contiguous; otherwise returns *this.
     Tensor contiguous() const;
 
-    bool requires_grad() const { return requires_grad_; }
-    void set_requires_grad(bool r) { requires_grad_ = r; }
-    const std::shared_ptr<Tensor>& grad() const { return grad_; }
-    const std::shared_ptr<tiramisu::Node>& grad_fn() const { return grad_fn_; }
-    void set_grad_fn(std::shared_ptr<tiramisu::Node> fn) { grad_fn_ = std::move(fn); } 
+    bool requires_grad() const { return autograd_state_->requires_grad; }
+    void set_requires_grad(bool r) { autograd_state_->requires_grad = r; }
+    const std::shared_ptr<Tensor>& grad() const { return autograd_state_->grad; }
+    const std::shared_ptr<Node>& grad_fn() const { return autograd_state_->grad_fn; }
+    void set_grad_fn(std::shared_ptr<Node> fn) { autograd_state_->grad_fn = std::move(fn); } 
     void accumulate_grad(const Tensor& g);
   
   private:
@@ -65,9 +65,12 @@ class Tensor {
     std::vector<int64_t> strides_;
     std::size_t offset_ = 0;
 
-    bool requires_grad_ = false;
-    std::shared_ptr<Tensor> grad_ = nullptr;
-    std::shared_ptr<Node> grad_fn_ = nullptr;
+    struct AutogradState {
+      bool requires_grad = false;
+      std::shared_ptr<Tensor> grad;
+      std::shared_ptr<Node> grad_fn;
+    };
+    std::shared_ptr<AutogradState> autograd_state_ = std::make_shared<AutogradState>();
 };
 
 // Canonical row-major strides for a shape. Pure function, no 

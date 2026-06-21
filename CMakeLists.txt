@@ -35,6 +35,7 @@ endif()
 # Library modules
 
 add_subdirectory(core)
+add_subdirectory(autograd)
 add_subdirectory(ops)
 
 # Tests, examples, and bench

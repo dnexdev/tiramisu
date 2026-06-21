@@ -202,6 +202,22 @@ Tensor Tensor::contiguous() const {
   return result;
 }
 
+void Tensor::accumulate_grad(const Tensor& g) {
+  Tensor c_g = g.contiguous();
+
+  if (!grad_) {
+    Tensor new_grad(c_g.shape(), c_g.dtype(), c_g.device());
+    std::copy(c_g.data<float>(), c_g.data<float>() + c_g.numel(), new_grad.data<float>());
+    grad_ = std::make_shared<Tensor>(new_grad);
+  } else {
+    float* current_grad_data = grad_->data<float>();
+    const float* new_grad_data = c_g.data<float>();
+    for (int64_t i = 0; i < grad_->numel(); i++) {
+      current_grad_data[i] += new_grad_data[i];
+    }
+  }
+}
+
 template float* Tensor::data<float>();
 template float& Tensor::at<float>(std::initializer_list<int64_t>);
 

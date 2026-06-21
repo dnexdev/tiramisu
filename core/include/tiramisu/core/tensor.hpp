@@ -9,6 +9,9 @@
 
 namespace tiramisu {
 
+// Forward declaration
+struct Node;
+
 // A Tensor is a view: shape + strides + offset describe how to walk
 // the buffer. The storage owns the bytes; the Tensor just interprets
 // them. transpose()/permute() never touch Storage at all.
@@ -48,12 +51,23 @@ class Tensor {
     // Copies into a fresh contiguous tensor only if not already
     // contiguous; otherwise returns *this.
     Tensor contiguous() const;
+
+    bool requires_grad() const { return requires_grad_; }
+    void set_requires_grad(bool r) { requires_grad_ = r; }
+    const std::shared_ptr<Tensor>& grad() const { return grad_; }
+    const std::shared_ptr<tiramisu::Node>& grad_fn() const { return grad_fn_; }
+    void set_grad_fn(std::shared_ptr<tiramisu::Node> fn) { grad_fn_ = std::move(fn); } 
+    void accumulate_grad(const Tensor& g);
   
   private:
     std::shared_ptr<Storage> storage_;
     std::vector<int64_t> shape_;
     std::vector<int64_t> strides_;
     std::size_t offset_ = 0;
+
+    bool requires_grad_ = false;
+    std::shared_ptr<Tensor> grad_ = nullptr;
+    std::shared_ptr<Node> grad_fn_ = nullptr;
 };
 
 // Canonical row-major strides for a shape. Pure function, no 

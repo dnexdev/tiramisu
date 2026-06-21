@@ -2,6 +2,8 @@
 #include "tiramisu/autograd/grad_mode.hpp"
 #include "tiramisu/core/node.hpp"
 #include "tiramisu/ops/elementwise.hpp"
+#include "tiramisu/ops/reduce.hpp"
+#include "tiramisu/ops/matmul.hpp"
 
 #include <unordered_set>
 #include <algorithm>
@@ -78,6 +80,176 @@ void backward(const Tensor& loss) {
       }
     }
   }
+}
+
+Tensor sub(const Tensor& a, const Tensor& b) {
+  Tensor out = tiramisu::ops::sub(a, b);
+  if (grad_enabled() && (a.requires_grad() || b.requires_grad())) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {a, b};
+    node->backward_fn = [](const Tensor& grad_output) {
+      return std::vector<Tensor>{
+        grad_output,
+        tiramisu::ops::neg(grad_output)
+      };
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor div(const Tensor& a, const Tensor& b) {
+  Tensor out = tiramisu::ops::div(a, b);
+  if (grad_enabled() && (a.requires_grad() || b.requires_grad())) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {a, b};
+    node->backward_fn = [a, b](const Tensor& grad_output) {
+      // grad_a = grad_output / b
+      Tensor grad_a = tiramisu::ops::div(grad_output, b);
+
+      // grad_b = -grad_output * a / (b * b)
+      Tensor b_sq = tiramisu::ops::mul(b, b);
+      Tensor neg_grad = tiramisu::ops::neg(grad_output);
+      Tensor num = tiramisu::ops::mul(neg_grad, a);
+      Tensor grad_b = tiramisu::ops::div(num, b_sq);
+
+      return std::vector<Tensor>{grad_a, grad_b};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor neg(const Tensor& t) {
+  Tensor out = tiramisu::ops::neg(t);
+  if (grad_enabled() && t.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {t};
+    node->backward_fn = [](const Tensor& grad_output) {
+      // grad_t = -grad_output
+      return std::vector<Tensor>{tiramisu::ops::neg(grad_output)};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor exp(const Tensor& t) {
+  Tensor out = tiramisu::ops::exp(t);
+  if (grad_enabled() && t.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {t};
+    Tensor out_val(out.shape(), out.dtype(), out.device());
+    std::copy(out.data<float>(), out.data<float>() + out.numel(), out_val.data<float>());
+    node->backward_fn = [out_val](const Tensor& grad_output) {
+      // grad_t = grad_output * (detached out)
+      return std::vector<Tensor>{tiramisu::ops::mul(grad_output, out_val)};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor log(const Tensor& t) {
+  Tensor out = tiramisu::ops::log(t);
+  if (grad_enabled() && t.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {t};
+    node->backward_fn = [t](const Tensor& grad_output) {
+      return std::vector<Tensor>{tiramisu::ops::div(grad_output, t)};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor relu(const Tensor& t) {
+  Tensor out = tiramisu::ops::relu(t);
+  if (grad_enabled() && t.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {t};
+    node->backward_fn = [t](const Tensor& grad_output) {
+      Tensor t_c = t.contiguous();
+      Tensor g_c = grad_output.contiguous();
+      Tensor grad_t(t_c.shape(), t_c.dtype(), t_c.device());
+
+      const float* t_data = t_c.data<float>();
+      const float* g_data = g_c.data<float>();
+      float *gt_data = grad_t.data<float>();
+
+      int64_t n = t_c.numel();
+      for (int64_t i = 0; i < n; i++) {
+        gt_data[i] = t_data[i] > 0.0f ? g_data[i] : 0.0f;
+      }
+
+      return std::vector<Tensor>{grad_t};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor sum(const Tensor& t) {
+  Tensor out = tiramisu::ops::sum(t);
+  if (grad_enabled() && t.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {t};
+    auto t_shape = t.shape();
+    node->backward_fn = [t_shape](const Tensor& grad_output) {
+      Tensor grad_t(t_shape, grad_output.dtype(), grad_output.device());
+      float g_val = grad_output.data<float>()[0];
+      std::fill_n(grad_t.data<float>(), grad_t.numel(), g_val);
+
+      return std::vector<Tensor>{grad_t};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor mean(const Tensor& t) {
+  Tensor out = tiramisu::ops::mean(t);
+  if (grad_enabled() && t.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {t};
+    auto t_shape = t.shape();
+    auto n = t.numel();
+    node->backward_fn = [t_shape, n](const Tensor& grad_output) {
+      Tensor grad_t(t_shape, grad_output.dtype(), grad_output.device());
+
+      float g_val = grad_output.data<float>()[0] / static_cast<float>(n);
+      std::fill_n(grad_t.data<float>(), grad_t.numel(), g_val);
+
+      return std::vector<Tensor>{grad_t};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor matmul(const Tensor& a, const Tensor& b) {
+  Tensor out = tiramisu::ops::matmul(a, b);
+  if (grad_enabled() && (a.requires_grad() || b.requires_grad())) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {a, b};
+    node->backward_fn = [a, b](const Tensor& grad_output) {
+      Tensor grad_a = tiramisu::ops::matmul(grad_output, b.transpose(0, 1));
+
+      Tensor grad_b = tiramisu::ops::matmul(a.transpose(0, 1), grad_output);
+      return std::vector<Tensor>{grad_a, grad_b};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
 }
 
 }

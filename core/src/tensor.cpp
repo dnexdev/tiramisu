@@ -208,4 +208,14 @@ template float& Tensor::at<float>(std::initializer_list<int64_t>);
 template int32_t* Tensor::data<int32_t>();
 template int32_t& Tensor::at<int32_t>(std::initializer_list<int64_t>);
 
+template <typename T>
+const T* Tensor::data() const {
+  if (tiramisu::dtype_of<T>() != dtype()) {
+    throw std::runtime_error("Tensor::data<T>() const: DType mismatch.");
+  }
+  return reinterpret_cast<const T*>(storage_->data()) + offset_;
+}
+template const float* Tensor::data<float>() const;
+template const int32_t* Tensor::data<int32_t>() const;
+
 }

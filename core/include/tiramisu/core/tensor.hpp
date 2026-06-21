@@ -38,6 +38,9 @@ class Tensor {
     template <typename T>
     T& at(std::initializer_list<int64_t> indices);
 
+    template <typename T>
+    const T* data() const;
+
     Tensor view(std::vector<int64_t> new_shape) const; // requires contiguous
     Tensor permute(std::vector<int64_t> dims) const;
     Tensor transpose(int64_t dim0, int64_t dim1) const; // permute special-case

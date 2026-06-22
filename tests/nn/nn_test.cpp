@@ -2,6 +2,8 @@
 #include "tiramisu/nn/linear.hpp"
 #include "tiramisu/nn/sequential.hpp"
 #include "tiramisu/optim/sgd.hpp"
+#include "tiramisu/nn/loss.hpp"
+#include "tiramisu/autograd/ops.hpp"
 
 TEST(LinearTest, ForwardPass) {
   tiramisu::nn::Linear layer(3, 2);
@@ -53,4 +55,32 @@ TEST(SGDTest, UpdatesParameters) {
   
   // Weight should decrease by (lr * grad) = 0.01
   EXPECT_LT(new_w, old_w);
+}
+
+TEST(LossTest, CrossEntropyKnownValue) {
+  // batch=2, classes=3
+  tiramisu::Tensor logits({2, 3});
+  // row 0: class 0 has highest logit
+  logits.at<float>({0, 0}) = 2.0f;
+  logits.at<float>({0, 1}) = 1.0f;
+  logits.at<float>({0, 2}) = 0.1f;
+  // row 1: class 2 has highest logit
+  logits.at<float>({1, 0}) = 0.1f;
+  logits.at<float>({1, 1}) = 1.0f;
+  logits.at<float>({1, 2}) = 2.0f;
+  logits.set_requires_grad(true);
+
+  // targets: sample 0 -> class 0 (correct), sample 1 -> class 2 (correct)
+  tiramisu::Tensor targets({2});
+  targets.at<float>({0}) = 0.0f;
+  targets.at<float>({1}) = 2.0f;
+
+  tiramisu::Tensor loss = tiramisu::nn::cross_entropy_loss(logits, targets);
+
+  // Loss should be low (both predictions correct, high confidence)
+  EXPECT_LT(loss.at<float>({0}), 0.5f);
+
+  // Gradient should flow back to logits
+  tiramisu::autograd::backward(loss);
+  EXPECT_NE(logits.grad(), nullptr);
 }

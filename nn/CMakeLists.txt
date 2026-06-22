@@ -3,6 +3,7 @@ add_library(tiramisu_nn
   src/linear.cpp
   src/sequential.cpp
   src/loss.cpp
+  src/module.cpp
 )
 
 target_include_directories(tiramisu_nn PUBLIC

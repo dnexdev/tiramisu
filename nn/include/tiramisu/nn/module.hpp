@@ -7,7 +7,7 @@ namespace tiramisu::nn {
 
 class Module {
   public:
-    virtual ~Module() = default;
+    virtual ~Module();
 
     virtual Tensor forward(const Tensor& x) = 0;
 

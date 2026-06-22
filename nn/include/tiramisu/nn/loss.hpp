@@ -1,5 +1,6 @@
 #pragma once
 #include "tiramisu/core/tensor.hpp"
+#include <memory>
 
 namespace tiramisu::nn {
 

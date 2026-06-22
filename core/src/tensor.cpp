@@ -202,6 +202,17 @@ Tensor Tensor::contiguous() const {
   return result;
 }
 
+Tensor Tensor::slice(int64_t dim, int64_t start, int64_t end) const {
+  if (dim != 0) throw std::runtime_error("Only dim 0 slicing supported for now");
+
+  size_t new_offset = offset_ + start * strides_[0];
+
+  std::vector<int64_t> new_shape = shape_;
+  new_shape[0] = end - start;
+
+  return Tensor(storage_, new_shape, strides_, new_offset);
+}
+
 void Tensor::accumulate_grad(const Tensor& g) {
   Tensor c_g = g.contiguous();
 

@@ -52,6 +52,8 @@ class Tensor {
     // contiguous; otherwise returns *this.
     Tensor contiguous() const;
 
+    Tensor slice(int64_t dim, int64_t start, int64_t end) const;
+
     bool requires_grad() const { return autograd_state_->requires_grad; }
     void set_requires_grad(bool r) { autograd_state_->requires_grad = r; }
     const std::shared_ptr<Tensor>& grad() const { return autograd_state_->grad; }

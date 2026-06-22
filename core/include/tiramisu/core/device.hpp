@@ -4,7 +4,7 @@ namespace tiramisu {
 
 enum class Device {
   CPU,
-  // CUDA
+  CUDA
 };
 
 }

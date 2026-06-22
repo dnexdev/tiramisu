@@ -7,5 +7,5 @@ namespace ops {
 Tensor sum(const Tensor& t);
 Tensor mean(const Tensor& t);
 
-}
-}
+}  // namespace ops
+}  // namespace tiramisu

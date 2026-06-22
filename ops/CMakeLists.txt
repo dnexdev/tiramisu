@@ -1,3 +1,5 @@
+find_package(OpenMP REQUIRED)
+
 add_library(tiramisu_ops
   cpu/broadcast.cpp
   cpu/elementwise.cpp
@@ -10,3 +12,6 @@ target_include_directories(tiramisu_ops PUBLIC
 )
 
 target_link_libraries(tiramisu_ops PUBLIC tiramisu_core)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(tiramisu_ops PRIVATE OpenMP::OpenMP_CXX)
+endif()

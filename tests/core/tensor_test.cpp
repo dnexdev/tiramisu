@@ -1,8 +1,9 @@
+#include "tiramisu/core/tensor.hpp"
+
 #include <gtest/gtest.h>
 
 #include <vector>
 
-#include "tiramisu/core/tensor.hpp"
 #include "tiramisu/core/device.hpp"
 #include "tiramisu/core/dtype.hpp"
 
@@ -21,7 +22,8 @@ TEST(TensorUtils, ContiguousStrides) {
 }
 
 TEST(TensorTest, FreshAllocation) {
-  tiramisu::Tensor t({2, 3, 4}, tiramisu::DType::Float32, tiramisu::Device::CPU);
+  tiramisu::Tensor t({2, 3, 4}, tiramisu::DType::Float32,
+                     tiramisu::Device::CPU);
 
   EXPECT_EQ(t.shape(), std::vector<int64_t>({2, 3, 4}));
   EXPECT_EQ(t.strides(), std::vector<int64_t>({12, 4, 1}));
@@ -31,14 +33,14 @@ TEST(TensorTest, FreshAllocation) {
 
 TEST(TensorTest, DataAccessAndAt) {
   tiramisu::Tensor t({2, 2}, tiramisu::DType::Float32, tiramisu::Device::CPU);
-  
+
   float* raw_data = t.data<float>();
-  
+
   // Fill using raw pointer
-  raw_data[0] = 1.0f; // [0, 0]
-  raw_data[1] = 2.0f; // [0, 1]
-  raw_data[2] = 3.0f; // [1, 0]
-  raw_data[3] = 4.0f; // [1, 1]
+  raw_data[0] = 1.0f;  // [0, 0]
+  raw_data[1] = 2.0f;  // [0, 1]
+  raw_data[2] = 3.0f;  // [1, 0]
+  raw_data[3] = 4.0f;  // [1, 1]
 
   // Read back using .at()
   EXPECT_FLOAT_EQ(t.at<float>({0, 0}), 1.0f);
@@ -55,7 +57,7 @@ TEST(TensorTest, DataAccessAndAt) {
 }
 
 TEST(TensorTest, View) {
-  tiramisu::Tensor t({2, 6}); // 12 elements
+  tiramisu::Tensor t({2, 6});  // 12 elements
   EXPECT_TRUE(t.is_contiguous());
 
   // Valid view
@@ -69,12 +71,13 @@ TEST(TensorTest, View) {
 }
 
 TEST(TensorTest, TransposeAndPermute) {
-  tiramisu::Tensor t({2, 3, 4}); // Strides: {12, 4, 1}
-  
+  tiramisu::Tensor t({2, 3, 4});  // Strides: {12, 4, 1}
+
   // 1. Transpose: Swap dim 0 and dim 1 -> Shape {3, 2, 4}
   tiramisu::Tensor trans = t.transpose(0, 1);
   EXPECT_EQ(trans.shape(), std::vector<int64_t>({3, 2, 4}));
-  EXPECT_EQ(trans.strides(), std::vector<int64_t>({4, 12, 1})); // Note the swapped strides
+  EXPECT_EQ(trans.strides(),
+            std::vector<int64_t>({4, 12, 1}));  // Note the swapped strides
   EXPECT_FALSE(trans.is_contiguous());
 
   // 2. Permute: Reverse all dims -> Shape {4, 3, 2}
@@ -86,11 +89,11 @@ TEST(TensorTest, TransposeAndPermute) {
 
 TEST(TensorTest, MakeContiguous) {
   tiramisu::Tensor t({2, 3});
-  
+
   // Write sequential data
   for (int i = 0; i < 2; ++i) {
     for (int j = 0; j < 3; ++j) {
-      t.at<float>({i, j}) = static_cast<float>(i * 3 + j); 
+      t.at<float>({i, j}) = static_cast<float>(i * 3 + j);
     }
   }
   // Layout: [0, 1, 2, 3, 4, 5]
@@ -103,7 +106,8 @@ TEST(TensorTest, MakeContiguous) {
   tiramisu::Tensor contig = view.contiguous();
   EXPECT_TRUE(contig.is_contiguous());
   EXPECT_EQ(contig.shape(), std::vector<int64_t>({3, 2}));
-  EXPECT_EQ(contig.strides(), std::vector<int64_t>({2, 1})); // Brand new canonical strides
+  EXPECT_EQ(contig.strides(),
+            std::vector<int64_t>({2, 1}));  // Brand new canonical strides
 
   // Ensure data was copied into the correct geometric position
   // The mathematical transpose of:
@@ -119,10 +123,10 @@ TEST(TensorTest, MakeContiguous) {
   EXPECT_FLOAT_EQ(contig.at<float>({1, 1}), 4.0f);
   EXPECT_FLOAT_EQ(contig.at<float>({2, 0}), 2.0f);
   EXPECT_FLOAT_EQ(contig.at<float>({2, 1}), 5.0f);
-  
+
   // Verify flat memory matches the repacked geometry
   float* contig_data = contig.data<float>();
-  EXPECT_FLOAT_EQ(contig_data[1], 3.0f); 
+  EXPECT_FLOAT_EQ(contig_data[1], 3.0f);
 }
 
 TEST(TensorTest, ScalarNumelMatchesEmptyShapeConvention) {

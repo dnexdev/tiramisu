@@ -1,9 +1,11 @@
 #include "tiramisu/ops/elementwise.hpp"
-#include "tiramisu/ops/broadcast.hpp"
-#include <stdexcept>
-#include <vector>
+
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
+#include <vector>
+
+#include "tiramisu/ops/broadcast.hpp"
 
 namespace tiramisu {
 namespace ops {
@@ -12,23 +14,24 @@ namespace {
 
 // internal helper: left-pads shapes and strides to a target rank
 // if a dimension is 1 (meaning it will be broadcasted), its stride becomes 0
-void pad_to_rank(const std::vector<int64_t>& shape, const std::vector<int64_t>& strides,
-                 int64_t target_rank,
-                std::vector<int64_t>& out_shape, std::vector<int64_t>& out_strides) {
+void pad_to_rank(const std::vector<int64_t>& shape,
+                 const std::vector<int64_t>& strides, int64_t target_rank,
+                 std::vector<int64_t>& out_shape,
+                 std::vector<int64_t>& out_strides) {
   out_shape.resize(target_rank, 1);
   out_strides.resize(target_rank, 0);
-  
+
   int64_t diff = target_rank - shape.size();
   for (size_t i = 0; i < shape.size(); i++) {
     out_shape[diff + i] = shape[i];
     out_strides[diff + i] = (shape[i] == 1) ? 0 : strides[i];
   }
-  }
 }
+}  // namespace
 
 // Universal N-dimensional Broadcasting Binary Engine
 template <typename Func>
-Tensor apply_binary_op(const Tensor &a, const Tensor &b, Func op) {
+Tensor apply_binary_op(const Tensor& a, const Tensor& b, Func op) {
   if (a.dtype() != DType::Float32 || b.dtype() != DType::Float32) {
     throw std::runtime_error("Binary ops currently only support Float32.");
   }
@@ -87,17 +90,36 @@ Tensor apply_unary_op(const Tensor& t, Func op) {
   return out;
 }
 
-
-
-Tensor add(const Tensor& a, const Tensor& b) { return tiramisu::ops::apply_binary_op(a, b, [](float x, float y) { return x + y; }); }
-Tensor sub(const Tensor& a, const Tensor& b) { return tiramisu::ops::apply_binary_op(a, b, [](float x, float y) { return x - y; }); }
-Tensor mul(const Tensor& a, const Tensor& b) { return tiramisu::ops::apply_binary_op(a, b, [](float x, float y) { return x * y; }); }
-Tensor div(const Tensor& a, const Tensor& b) { return tiramisu::ops::apply_binary_op(a, b, [](float x, float y) { return x / y; }); }
-
-Tensor neg(const Tensor& t)  { return tiramisu::ops::apply_unary_op(t, [](float x) { return -x; }); }
-Tensor exp(const Tensor& t)  { return tiramisu::ops::apply_unary_op(t, [](float x) { return std::exp(x); }); }
-Tensor log(const Tensor& t)  { return tiramisu::ops::apply_unary_op(t, [](float x) { return std::log(x); }); }
-Tensor relu(const Tensor& t) { return tiramisu::ops::apply_unary_op(t, [](float x) { return std::max(0.0f, x); }); }
-
+Tensor add(const Tensor& a, const Tensor& b) {
+  return tiramisu::ops::apply_binary_op(a, b,
+                                        [](float x, float y) { return x + y; });
 }
+Tensor sub(const Tensor& a, const Tensor& b) {
+  return tiramisu::ops::apply_binary_op(a, b,
+                                        [](float x, float y) { return x - y; });
 }
+Tensor mul(const Tensor& a, const Tensor& b) {
+  return tiramisu::ops::apply_binary_op(a, b,
+                                        [](float x, float y) { return x * y; });
+}
+Tensor div(const Tensor& a, const Tensor& b) {
+  return tiramisu::ops::apply_binary_op(a, b,
+                                        [](float x, float y) { return x / y; });
+}
+
+Tensor neg(const Tensor& t) {
+  return tiramisu::ops::apply_unary_op(t, [](float x) { return -x; });
+}
+Tensor exp(const Tensor& t) {
+  return tiramisu::ops::apply_unary_op(t, [](float x) { return std::exp(x); });
+}
+Tensor log(const Tensor& t) {
+  return tiramisu::ops::apply_unary_op(t, [](float x) { return std::log(x); });
+}
+Tensor relu(const Tensor& t) {
+  return tiramisu::ops::apply_unary_op(
+      t, [](float x) { return std::max(0.0f, x); });
+}
+
+}  // namespace ops
+}  // namespace tiramisu

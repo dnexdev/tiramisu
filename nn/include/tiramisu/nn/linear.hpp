@@ -6,15 +6,15 @@
 namespace tiramisu::nn {
 
 class Linear : public Module {
-  public:
-    Linear(int64_t in_features, int64_t out_features);
+ public:
+  Linear(int64_t in_features, int64_t out_features);
 
-    Tensor forward(const Tensor& x) override;
-    std::vector<Tensor*> parameters() override;
-  
-  private:
-    Parameter weight;
-    Parameter bias;
+  Tensor forward(const Tensor& x) override;
+  std::vector<Tensor*> parameters() override;
+
+ private:
+  Parameter weight;
+  Parameter bias;
 };
 
-}
+}  // namespace tiramisu::nn

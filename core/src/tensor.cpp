@@ -1,9 +1,9 @@
 #include "tiramisu/core/tensor.hpp"
 
+#include <algorithm>
+#include <cstring>
 #include <numeric>
 #include <stdexcept>
-#include <cstring>
-#include <algorithm>
 
 namespace tiramisu {
 
@@ -24,8 +24,7 @@ std::vector<int64_t> contiguous_strides(const std::vector<int64_t>& shape) {
 }
 
 Tensor::Tensor(std::vector<int64_t> shape, DType dtype, Device device)
-  : shape_(std::move(shape)), offset_(0) {
-  
+    : shape_(std::move(shape)), offset_(0) {
   strides_ = contiguous_strides(shape_);
   int64_t elements = numel();
 
@@ -34,10 +33,10 @@ Tensor::Tensor(std::vector<int64_t> shape, DType dtype, Device device)
 
 Tensor::Tensor(std::shared_ptr<Storage> storage, std::vector<int64_t> shape,
                std::vector<int64_t> strides, std::size_t offset)
-  : storage_(std::move(storage)), shape_(std::move(shape)),
-    strides_(std::move(strides)), offset_(offset) {
-  
-
+    : storage_(std::move(storage)),
+      shape_(std::move(shape)),
+      strides_(std::move(strides)),
+      offset_(offset) {
   if (!storage_) {
     throw std::invalid_argument("Tensor view created with null Storage.");
   }
@@ -46,20 +45,16 @@ Tensor::Tensor(std::shared_ptr<Storage> storage, std::vector<int64_t> shape,
   }
 }
 
-const std::vector<int64_t>& Tensor::shape() const {
-  return shape_;
-}
+const std::vector<int64_t>& Tensor::shape() const { return shape_; }
 
-const std::vector<int64_t>& Tensor::strides() const {
-  return strides_;
-}
+const std::vector<int64_t>& Tensor::strides() const { return strides_; }
 
 int64_t Tensor::numel() const {
   // if (shape_.empty()) {
   //   return 1;
   // }
   int64_t count = 1;
-  for (int64_t dim : shape_)  {
+  for (int64_t dim : shape_) {
     count *= dim;
   }
   return count;
@@ -70,18 +65,15 @@ bool Tensor::is_contiguous() const {
   return strides_ == expected_strides;
 }
 
-DType Tensor::dtype() const {
-  return storage_->dtype();
-}
+DType Tensor::dtype() const { return storage_->dtype(); }
 
-Device Tensor::device() const {
-  return storage_->device();
-}
+Device Tensor::device() const { return storage_->device(); }
 
 template <typename T>
 T* Tensor::data() {
   if (tiramisu::dtype_of<T>() != dtype()) {
-    throw std::runtime_error("Tensor::data<T>(): T does not match this tensor's dtype.");
+    throw std::runtime_error(
+        "Tensor::data<T>(): T does not match this tensor's dtype.");
   }
   return reinterpret_cast<T*>(storage_->data()) + offset_;
 }
@@ -116,11 +108,13 @@ Tensor Tensor::view(std::vector<int64_t> new_shape) const {
   }
 
   if (new_numel != numel()) {
-    throw std::invalid_argument("View shape must have the same number of elements.");
+    throw std::invalid_argument(
+        "View shape must have the same number of elements.");
   }
 
   std::vector<int64_t> new_strides = contiguous_strides(new_shape);
-  return Tensor(storage_, std::move(new_shape), std::move(new_strides), offset_);
+  return Tensor(storage_, std::move(new_shape), std::move(new_strides),
+                offset_);
 }
 
 Tensor Tensor::permute(std::vector<int64_t> dims) const {
@@ -155,7 +149,8 @@ Tensor Tensor::permute(std::vector<int64_t> dims) const {
     new_strides[i] = strides_[d];
   }
 
-  return Tensor(storage_, std::move(new_shape), std::move(new_strides), offset_);
+  return Tensor(storage_, std::move(new_shape), std::move(new_strides),
+                offset_);
 }
 
 Tensor Tensor::transpose(int64_t dim0, int64_t dim1) const {
@@ -196,14 +191,16 @@ Tensor Tensor::contiguous() const {
       temp /= shape_[d];
     }
 
-    std::memcpy(dst + i * itemsize, src_base + src_flat_idx * itemsize, itemsize);
+    std::memcpy(dst + i * itemsize, src_base + src_flat_idx * itemsize,
+                itemsize);
   }
 
   return result;
 }
 
 Tensor Tensor::slice(int64_t dim, int64_t start, int64_t end) const {
-  if (dim != 0) throw std::runtime_error("Only dim 0 slicing supported for now");
+  if (dim != 0)
+    throw std::runtime_error("Only dim 0 slicing supported for now");
 
   size_t new_offset = offset_ + start * strides_[0];
 
@@ -218,7 +215,8 @@ void Tensor::accumulate_grad(const Tensor& g) {
 
   if (!autograd_state_->grad) {
     Tensor new_grad(c_g.shape(), c_g.dtype(), c_g.device());
-    std::copy(c_g.data<float>(), c_g.data<float>() + c_g.numel(), new_grad.data<float>());
+    std::copy(c_g.data<float>(), c_g.data<float>() + c_g.numel(),
+              new_grad.data<float>());
     autograd_state_->grad = std::make_shared<Tensor>(new_grad);
   } else {
     float* current_grad_data = autograd_state_->grad->data<float>();
@@ -245,4 +243,4 @@ const T* Tensor::data() const {
 template const float* Tensor::data<float>() const;
 template const int32_t* Tensor::data<int32_t>() const;
 
-}
+}  // namespace tiramisu

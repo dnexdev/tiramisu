@@ -1,11 +1,17 @@
 #include "tiramisu/optim/adam.hpp"
+
 #include <cmath>
 
 namespace tiramisu::optim {
 
-Adam::Adam(const std::vector<Tensor*>& parameters, float lr, float beta1, float beta2, float eps)
-  : parameters_(parameters), lr_(lr), beta1_(beta1), beta2_(beta2), eps_(eps), t_(0) {
-
+Adam::Adam(const std::vector<Tensor*>& parameters, float lr, float beta1,
+           float beta2, float eps)
+    : parameters_(parameters),
+      lr_(lr),
+      beta1_(beta1),
+      beta2_(beta2),
+      eps_(eps),
+      t_(0) {
   for (Tensor* p : parameters_) {
     m_.emplace_back(p->shape());
     v_.emplace_back(p->shape());
@@ -19,7 +25,7 @@ void Adam::step() {
   t_ += 1;
 
   for (size_t i = 0; i < parameters_.size(); i++) {
-    Tensor *p = parameters_[i];
+    Tensor* p = parameters_[i];
     if (!p->requires_grad() || !p->grad()) continue;
 
     float* p_data = p->data<float>();
@@ -34,12 +40,14 @@ void Adam::step() {
 
       v_data[j] = beta2_ * v_data[j] + (1.0f - beta2_) * grad * grad;
 
-      float m_hat = m_data[j] / (1.0f - std::pow(beta1_, static_cast<float>(t_)));
+      float m_hat =
+          m_data[j] / (1.0f - std::pow(beta1_, static_cast<float>(t_)));
 
-      float v_hat = v_data[j] / (1.0f - std::pow(beta2_, static_cast<float>(t_)));
+      float v_hat =
+          v_data[j] / (1.0f - std::pow(beta2_, static_cast<float>(t_)));
 
       p_data[j] -= lr_ * m_hat / (std::sqrt(v_hat) + eps_);
-    } 
+    }
   }
 }
 
@@ -51,4 +59,4 @@ void Adam::zero_grad() {
   }
 }
 
-}
+}  // namespace tiramisu::optim

@@ -1,13 +1,10 @@
 #pragma once
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 
 namespace tiramisu {
 
-enum class DType {
-  Float32,
-  Int32
-};
+enum class DType { Float32, Int32 };
 
 std::size_t dtype_size(DType dtype);
 
@@ -24,4 +21,4 @@ constexpr DType dtype_of<int32_t>() {
   return DType::Int32;
 }
 
-}
+}  // namespace tiramisu

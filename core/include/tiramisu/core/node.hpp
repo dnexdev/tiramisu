@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <vector>
+
 #include "tiramisu/core/tensor.hpp"
 
 namespace tiramisu {
@@ -12,4 +13,4 @@ struct Node {
   std::function<std::vector<Tensor>(const Tensor& grad_output)> backward_fn;
 };
 
-}
+}  // namespace tiramisu

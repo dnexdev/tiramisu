@@ -9,4 +9,4 @@ inline constexpr int kVersionPatch = 0;
 // Returns "MAJOR.MINOR.PATCH"
 const char* version_string();
 
-}
+}  // namespace tiramisu

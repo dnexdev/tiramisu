@@ -11,6 +11,6 @@ std::size_t dtype_size(DType dtype) {
     default:
       throw std::invalid_argument("Unknown DType in dtype_size()");
   }
-}  
-
 }
+
+}  // namespace tiramisu

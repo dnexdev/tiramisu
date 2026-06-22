@@ -3,7 +3,7 @@
 namespace tiramisu::optim {
 
 SGD::SGD(const std::vector<Tensor*>& parameters, float lr)
-  : parameters_(parameters), lr_(lr) {}
+    : parameters_(parameters), lr_(lr) {}
 
 void SGD::step() {
   for (Tensor* p : parameters_) {
@@ -26,4 +26,4 @@ void SGD::zero_grad() {
   }
 }
 
-}
+}  // namespace tiramisu::optim

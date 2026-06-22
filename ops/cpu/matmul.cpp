@@ -1,4 +1,5 @@
 #include "tiramisu/ops/matmul.hpp"
+
 #include <stdexcept>
 
 namespace tiramisu {
@@ -27,17 +28,24 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
   const float* data_b = c_b.data<float>();
   float* data_out = out.data<float>();
 
+  std::fill_n(data_out, M * N, 0.0f);
+
+  int64_t total_ops = M * K * N;
+
+#pragma omp parallel for if (total_ops > 200000)
   for (int64_t i = 0; i < M; i++) {
-    for (int64_t j = 0; j < N; j++) {
-      float sum = 0.0f;
-      for (int64_t k = 0; k < K; k++) {
-        sum += data_a[i * K + k] * data_b[k * N + j];
+    for (int64_t k = 0; k < K; k++) {
+      // float sum = 0.0f;
+      float a_ik = data_a[i * K + k];
+      for (int64_t j = 0; j < N; j++) {
+        // sum += data_a[i * K + k] * data_b[k * N + j];
+        data_out[i * N + j] += a_ik * data_b[k * N + j];
       }
-      data_out[i * N + j] = sum;
+      // data_out[i * N + j] = sum;
     }
   }
   return out;
 }
 
-}
-}
+}  // namespace ops
+}  // namespace tiramisu

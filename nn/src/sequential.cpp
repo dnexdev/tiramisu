@@ -3,7 +3,7 @@
 namespace tiramisu::nn {
 
 Sequential::Sequential(const std::vector<std::shared_ptr<Module>>& modules)
-  : modules_(modules) {}
+    : modules_(modules) {}
 
 Tensor Sequential::forward(const Tensor& x) {
   Tensor out = x;
@@ -22,4 +22,4 @@ std::vector<Tensor*> Sequential::parameters() {
   return params;
 }
 
-}
+}  // namespace tiramisu::nn

@@ -5,14 +5,14 @@ namespace tiramisu::autograd {
 bool grad_enabled();
 
 class NoGradGuard {
-  public:
-    NoGradGuard();
-    ~NoGradGuard();
-    NoGradGuard(const NoGradGuard&) = delete;
-    NoGradGuard& operator=(const NoGradGuard&) = delete;
-  
-  private:
-    bool previous_;
+ public:
+  NoGradGuard();
+  ~NoGradGuard();
+  NoGradGuard(const NoGradGuard&) = delete;
+  NoGradGuard& operator=(const NoGradGuard&) = delete;
+
+ private:
+  bool previous_;
 };
 
-}
+}  // namespace tiramisu::autograd

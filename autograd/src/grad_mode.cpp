@@ -10,8 +10,6 @@ NoGradGuard::NoGradGuard() : previous_(g_grad_enabled) {
   g_grad_enabled = false;
 }
 
-NoGradGuard::~NoGradGuard() {
-  g_grad_enabled = previous_;
-}
+NoGradGuard::~NoGradGuard() { g_grad_enabled = previous_; }
 
-}
+}  // namespace tiramisu::autograd

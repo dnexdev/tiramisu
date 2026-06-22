@@ -1,22 +1,23 @@
 #include <gtest/gtest.h>
-#include "tiramisu/autograd/ops.hpp"
+
 #include "tiramisu/autograd/gradcheck.hpp"
+#include "tiramisu/autograd/ops.hpp"
 
 namespace tiramisu {
 TEST(AutogradTest, TensorUsedTwice) {
-    tiramisu::Tensor x({1});
-    x.at<float>({0}) = 3.0f;
-    x.set_requires_grad(true);
+  tiramisu::Tensor x({1});
+  x.at<float>({0}) = 3.0f;
+  x.set_requires_grad(true);
 
-    // y = x * x  -> dy/dx = 2x = 6
-    auto y = tiramisu::autograd::mul(x, x);
-    
-    // z = y + y  -> dz/dy = 2, dz/dx = 4x = 12
-    auto z = tiramisu::autograd::add(y, y);
-    
-    tiramisu::autograd::backward(z);
-    
-    EXPECT_FLOAT_EQ(x.grad()->at<float>({0}), 12.0f);
+  // y = x * x  -> dy/dx = 2x = 6
+  auto y = tiramisu::autograd::mul(x, x);
+
+  // z = y + y  -> dz/dy = 2, dz/dx = 4x = 12
+  auto z = tiramisu::autograd::add(y, y);
+
+  tiramisu::autograd::backward(z);
+
+  EXPECT_FLOAT_EQ(x.grad()->at<float>({0}), 12.0f);
 }
 
 TEST(AutogradOpsTest, SubGradient) {
@@ -78,16 +79,20 @@ TEST(AutogradOpsTest, MatmulGradientWrtA) {
   // scalar, so scalarizing through sum() is what makes gradcheck
   // applicable here at all.
   Tensor B({2, 2});
-  B.at<float>({0, 0}) = 1; B.at<float>({0, 1}) = 2;
-  B.at<float>({1, 0}) = 3; B.at<float>({1, 1}) = 4;
+  B.at<float>({0, 0}) = 1;
+  B.at<float>({0, 1}) = 2;
+  B.at<float>({1, 0}) = 3;
+  B.at<float>({1, 1}) = 4;
 
   Tensor A({2, 2});
-  A.at<float>({0, 0}) = 5; A.at<float>({0, 1}) = 6;
-  A.at<float>({1, 0}) = 7; A.at<float>({1, 1}) = 8;
+  A.at<float>({0, 0}) = 5;
+  A.at<float>({0, 1}) = 6;
+  A.at<float>({1, 0}) = 7;
+  A.at<float>({1, 1}) = 8;
 
   auto f = [&B](const Tensor& t) {
     return autograd::sum(autograd::matmul(t, B));
   };
   EXPECT_TRUE(autograd::gradcheck(f, A, 1e-2, 1e-2));
 }
-}
+}  // namespace tiramisu

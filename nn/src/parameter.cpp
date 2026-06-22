@@ -1,4 +1,5 @@
 #include "tiramisu/nn/parameter.hpp"
+
 #include <random>
 
 namespace tiramisu::nn {
@@ -24,4 +25,4 @@ Parameter::Parameter(const std::vector<int64_t>& shape) : Tensor(shape) {
   }
 }
 
-}
+}  // namespace tiramisu::nn

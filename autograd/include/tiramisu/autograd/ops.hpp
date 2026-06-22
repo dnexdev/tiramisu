@@ -16,4 +16,4 @@ Tensor mean(const Tensor& t);
 Tensor matmul(const Tensor& a, const Tensor& b);
 
 void backward(const Tensor& loss);
-}
+}  // namespace tiramisu::autograd

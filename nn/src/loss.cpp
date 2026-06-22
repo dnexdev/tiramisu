@@ -1,17 +1,20 @@
 #include "tiramisu/nn/loss.hpp"
-#include "tiramisu/core/node.hpp"
+
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
-#include <algorithm>
+
+#include "tiramisu/core/node.hpp"
 
 namespace tiramisu::nn {
 
 Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
   if (logits.shape().size() != 2)
-    throw std::invalid_argument("cross_entropy_loss: logits must be 2D (batch, classes)");
+    throw std::invalid_argument(
+        "cross_entropy_loss: logits must be 2D (batch, classes)");
 
   int64_t batch = logits.shape()[0];
-  int64_t C     = logits.shape()[1];
+  int64_t C = logits.shape()[1];
 
   Tensor c_logits = logits.contiguous();
   const float* logit_data = c_logits.data<float>();
@@ -41,7 +44,8 @@ Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
   if (logits.requires_grad()) {
     auto node = std::make_shared<tiramisu::Node>();
     node->inputs = {logits};
-    node->backward_fn = [softmax_vals, batch, C, targets](const Tensor& grad_output) {
+    node->backward_fn = [softmax_vals, batch, C,
+                         targets](const Tensor& grad_output) {
       float upstream = grad_output.data<float>()[0];
 
       Tensor grad_logits({batch, C});
@@ -52,7 +56,8 @@ Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
         for (int64_t c = 0; c < C; c++) {
           float sm = softmax_vals[i * C + c];
           float indicator = (c == target) ? 1.0f : 0.0f;
-          gl[i * C + c] = upstream * (sm - indicator) / static_cast<float>(batch);
+          gl[i * C + c] =
+              upstream * (sm - indicator) / static_cast<float>(batch);
         }
       }
       return std::vector<Tensor>{grad_logits};
@@ -64,4 +69,4 @@ Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
   return loss;
 }
 
-}
+}  // namespace tiramisu::nn

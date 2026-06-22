@@ -1,14 +1,14 @@
 #include "tiramisu/autograd/gradcheck.hpp"
+
+#include <cmath>
+
 #include "tiramisu/autograd/grad_mode.hpp"
 #include "tiramisu/autograd/ops.hpp"
-#include <cmath>
 
 namespace tiramisu::autograd {
 
 bool gradcheck(const std::function<Tensor(const Tensor&)>& f,
-               const Tensor& input,
-               double epsilon,
-               double tolerance) {
+               const Tensor& input, double epsilon, double tolerance) {
   Tensor x = input;
   x.set_requires_grad(true);
   Tensor out = f(x);
@@ -41,4 +41,4 @@ bool gradcheck(const std::function<Tensor(const Tensor&)>& f,
   return true;
 }
 
-}
+}  // namespace tiramisu::autograd

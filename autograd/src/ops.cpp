@@ -1,24 +1,27 @@
 #include "tiramisu/autograd/ops.hpp"
+
+#include <algorithm>
+#include <unordered_set>
+
 #include "tiramisu/autograd/grad_mode.hpp"
 #include "tiramisu/core/node.hpp"
 #include "tiramisu/ops/elementwise.hpp"
-#include "tiramisu/ops/reduce.hpp"
 #include "tiramisu/ops/matmul.hpp"
-
-#include <unordered_set>
-#include <algorithm>
+#include "tiramisu/ops/reduce.hpp"
 
 namespace tiramisu::autograd {
 
 // sum grad_output down to target_shape by summing over any leading
 // dims that were broadcast
 // ex: grad_output (64, 10), target_shape (10,) -> sum over dim 0 -> (10,)
-static Tensor reduce_grad_to(const Tensor& grad, const std::vector<int64_t>& target_shape) {
+static Tensor reduce_grad_to(const Tensor& grad,
+                             const std::vector<int64_t>& target_shape) {
   if (grad.shape() == target_shape) {
     return grad;
   }
 
-  int64_t extra_dims = (int64_t)grad.shape().size() - (int64_t)target_shape.size();
+  int64_t extra_dims =
+      (int64_t)grad.shape().size() - (int64_t)target_shape.size();
 
   Tensor result = grad.contiguous();
 
@@ -49,10 +52,8 @@ Tensor add(const Tensor& a, const Tensor& b) {
     auto node = std::make_shared<Node>();
     node->inputs = {a, b};
     node->backward_fn = [a, b](const Tensor& grad_output) {
-      return std::vector<Tensor>{
-        reduce_grad_to(grad_output, a.shape()),
-        reduce_grad_to(grad_output, b.shape())
-      };
+      return std::vector<Tensor>{reduce_grad_to(grad_output, a.shape()),
+                                 reduce_grad_to(grad_output, b.shape())};
     };
     out.set_requires_grad(true);
     out.set_grad_fn(node);
@@ -67,10 +68,8 @@ Tensor mul(const Tensor& a, const Tensor& b) {
     auto node = std::make_shared<Node>();
     node->inputs = {a, b};
     node->backward_fn = [a, b](const Tensor& grad_output) {
-      return std::vector<Tensor>{
-        tiramisu::ops::mul(grad_output, b),
-        tiramisu::ops::mul(grad_output, a)
-      };
+      return std::vector<Tensor>{tiramisu::ops::mul(grad_output, b),
+                                 tiramisu::ops::mul(grad_output, a)};
     };
     out.set_requires_grad(true);
     out.set_grad_fn(node);
@@ -124,9 +123,8 @@ Tensor sub(const Tensor& a, const Tensor& b) {
     node->inputs = {a, b};
     node->backward_fn = [a, b](const Tensor& grad_output) {
       return std::vector<Tensor>{
-        reduce_grad_to(grad_output, a.shape()),
-        reduce_grad_to(tiramisu::ops::neg(grad_output), b.shape())
-      };
+          reduce_grad_to(grad_output, a.shape()),
+          reduce_grad_to(tiramisu::ops::neg(grad_output), b.shape())};
     };
     out.set_requires_grad(true);
     out.set_grad_fn(node);
@@ -178,7 +176,8 @@ Tensor exp(const Tensor& t) {
     auto node = std::make_shared<Node>();
     node->inputs = {t};
     Tensor out_val(out.shape(), out.dtype(), out.device());
-    std::copy(out.data<float>(), out.data<float>() + out.numel(), out_val.data<float>());
+    std::copy(out.data<float>(), out.data<float>() + out.numel(),
+              out_val.data<float>());
     node->backward_fn = [out_val](const Tensor& grad_output) {
       // grad_t = grad_output * (detached out)
       return std::vector<Tensor>{tiramisu::ops::mul(grad_output, out_val)};
@@ -215,7 +214,7 @@ Tensor relu(const Tensor& t) {
 
       const float* t_data = t_c.data<float>();
       const float* g_data = g_c.data<float>();
-      float *gt_data = grad_t.data<float>();
+      float* gt_data = grad_t.data<float>();
 
       int64_t n = t_c.numel();
       for (int64_t i = 0; i < n; i++) {
@@ -287,4 +286,4 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
   return out;
 }
 
-}
+}  // namespace tiramisu::autograd

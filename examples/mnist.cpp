@@ -19,6 +19,8 @@ uint32_t swap_endian(uint32_t val) {
 
 Tensor load_mnist_images(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
+    if (!file.is_open())
+        throw std::runtime_error("Cannot open: " + path);
     uint32_t magic, num, rows, cols;
     file.read((char*)&magic, 4); magic = swap_endian(magic);
     file.read((char*)&num, 4);   num = swap_endian(num);
@@ -38,6 +40,8 @@ Tensor load_mnist_images(const std::string& path) {
 
 Tensor load_mnist_labels(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
+    if (!file.is_open())
+        throw std::runtime_error("Cannot open: " + path);
     uint32_t magic, num;
     file.read((char*)&magic, 4); magic = swap_endian(magic);
     file.read((char*)&num, 4);   num = swap_endian(num);
@@ -53,8 +57,8 @@ Tensor load_mnist_labels(const std::string& path) {
 }
 
 int main() {
-    Tensor train_x = load_mnist_images("train-images-idx3-ubyte");
-    Tensor train_y = load_mnist_labels("train-labels-idx1-ubyte");
+    Tensor train_x = load_mnist_images("../../data/train-images.idx3-ubyte");
+    Tensor train_y = load_mnist_labels("../../data/train-labels.idx1-ubyte");
 
     auto model = std::make_shared<nn::Sequential>(std::vector<std::shared_ptr<nn::Module>>{
         std::make_shared<nn::Linear>(784, 128),

@@ -10,3 +10,10 @@ compile_commands.json
 .idea/
 __pycache__/
 *.egg-info/
+.venv
+
+# MNIST data files
+*.idx3-ubyte
+*.idx1-ubyte
+examples/train-images-idx3-ubyte/
+examples/train-labels-idx1-ubyte/

@@ -9,7 +9,12 @@ Parameter::Parameter(const std::vector<int64_t>& shape) : Tensor(shape) {
   // random initialization uniformly in [-1, 1]
   // seed is fixed for reproducibility, will be changed to random_device in prod
   std::mt19937 gen(42);
-  std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+  // Kaiming uniform: bound = sqrt(2 / fan_in)
+  // fan_in = input features = second dim for weights, only dim for biases
+  int64_t fan_in = (shape.size() >= 2) ? shape[1] : shape[0];
+  float bound = std::sqrt(2.0f / static_cast<float>(fan_in));
+  std::uniform_real_distribution<float> dist(-bound, bound);
 
   float* data_ptr = this->data<float>();
   int64_t num_elements_ = this->numel();

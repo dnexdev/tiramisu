@@ -1,2 +1,4 @@
 add_executable(hello_tiramisu hello_tiramisu.cpp)
+add_executable(mnist mnist.cpp)
 target_link_libraries(hello_tiramisu PRIVATE tiramisu_core)
+target_link_libraries(mnist PRIVATE tiramisu_core tiramisu_ops tiramisu_autograd tiramisu_nn tiramisu_optim)

@@ -4,12 +4,15 @@ add_executable(tiramisu_tests
   core/tensor_test.cpp
   ops/ops_test.cpp
   autograd/autograd.cpp
+  nn/nn_test.cpp
 )
 
 target_link_libraries(tiramisu_tests PRIVATE
   tiramisu_core
   tiramisu_ops
   tiramisu_autograd
+  tiramisu_nn
+  tiramisu_optim
   GTest::gtest_main
 )
 

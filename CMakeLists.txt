@@ -37,6 +37,8 @@ endif()
 add_subdirectory(core)
 add_subdirectory(autograd)
 add_subdirectory(ops)
+add_subdirectory(nn)
+add_subdirectory(optim)
 
 # Tests, examples, and bench
 

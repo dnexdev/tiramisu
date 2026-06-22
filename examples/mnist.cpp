@@ -57,6 +57,8 @@ Tensor load_mnist_labels(const std::string& path) {
 }
 
 int main() {
+    // To run mnist, you need to have these files somewhere
+    // A suggestion is to create a data folder and put them in there
     Tensor train_x = load_mnist_images("../../data/train-images.idx3-ubyte");
     Tensor train_y = load_mnist_labels("../../data/train-labels.idx1-ubyte");
 

@@ -10,14 +10,49 @@
 
 namespace tiramisu::autograd {
 
+// sum grad_output down to target_shape by summing over any leading
+// dims that were broadcast
+// ex: grad_output (64, 10), target_shape (10,) -> sum over dim 0 -> (10,)
+static Tensor reduce_grad_to(const Tensor& grad, const std::vector<int64_t>& target_shape) {
+  if (grad.shape() == target_shape) {
+    return grad;
+  }
+
+  int64_t extra_dims = (int64_t)grad.shape().size() - (int64_t)target_shape.size();
+
+  Tensor result = grad.contiguous();
+
+  for (int64_t d = 0; d < extra_dims; d++) {
+    int64_t rows = result.shape()[0];
+    int64_t cols = result.numel() / rows;
+
+    Tensor summed({cols});
+
+    float* src = result.data<float>();
+    float* dst = summed.data<float>();
+    std::fill_n(dst, cols, 0.0f);
+
+    for (int64_t r = 0; r < rows; r++) {
+      for (int64_t c = 0; c < cols; c++) {
+        dst[c] += src[r * cols + c];
+      }
+    }
+    result = summed;
+  }
+  return result;
+}
+
 Tensor add(const Tensor& a, const Tensor& b) {
   Tensor out = tiramisu::ops::add(a, b);
 
   if (grad_enabled() && (a.requires_grad() || b.requires_grad())) {
     auto node = std::make_shared<Node>();
     node->inputs = {a, b};
-    node->backward_fn = [](const Tensor& grad_output) {
-      return std::vector<Tensor>{grad_output, grad_output};
+    node->backward_fn = [a, b](const Tensor& grad_output) {
+      return std::vector<Tensor>{
+        reduce_grad_to(grad_output, a.shape()),
+        reduce_grad_to(grad_output, b.shape())
+      };
     };
     out.set_requires_grad(true);
     out.set_grad_fn(node);
@@ -87,10 +122,10 @@ Tensor sub(const Tensor& a, const Tensor& b) {
   if (grad_enabled() && (a.requires_grad() || b.requires_grad())) {
     auto node = std::make_shared<Node>();
     node->inputs = {a, b};
-    node->backward_fn = [](const Tensor& grad_output) {
+    node->backward_fn = [a, b](const Tensor& grad_output) {
       return std::vector<Tensor>{
-        grad_output,
-        tiramisu::ops::neg(grad_output)
+        reduce_grad_to(grad_output, a.shape()),
+        reduce_grad_to(tiramisu::ops::neg(grad_output), b.shape())
       };
     };
     out.set_requires_grad(true);

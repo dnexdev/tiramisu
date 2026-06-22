@@ -151,7 +151,7 @@ int main() {
     }
   }
 
-  for (int epoch = 0; epoch < 20; epoch++) {
+  for (int epoch = 0; epoch < 10; epoch++) {
     float total_loss = 0.0f;
     for (int b = 0; b * batch_size < num_train; b++) {
       int start = b * batch_size;

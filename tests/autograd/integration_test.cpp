@@ -64,4 +64,33 @@ TEST(AutogradIntegrationTest, InferenceSkipsGraphWithNoGradGuard) {
   EXPECT_EQ(out.grad_fn(), nullptr);
 }
 
+TEST(AutogradIntegrationTest, BatchedMatmulBackward) {
+  Tensor B({1, 3, 2});
+  std::fill_n(B.data<float>(), B.numel(), 1.0f);
+  Tensor A({1, 2, 3});
+  std::fill_n(A.data<float>(), A.numel(), 1.0f);
+  A.set_requires_grad(true);
+
+  Tensor loss = autograd::sum(autograd::matmul(A, B));
+  autograd::backward(loss);
+
+  ASSERT_NE(A.grad(), nullptr);
+  EXPECT_NEAR(A.grad()->at<float>({0, 0, 0}), 2.0f, 1e-4f);
+}
+
+TEST(AutogradIntegrationTest, BatchedMatmulBroadcastBackward) {
+  Tensor W({3, 2});
+  std::fill_n(W.data<float>(), W.numel(), 1.0f);
+  W.set_requires_grad(true);
+
+  Tensor X({2, 2, 3});
+  std::fill_n(X.data<float>(), X.numel(), 1.0f);
+
+  Tensor loss = autograd::sum(autograd::matmul(X, W));
+  autograd::backward(loss);
+
+  ASSERT_NE(W.grad(), nullptr);
+  EXPECT_NEAR(W.grad()->at<float>({0, 0}), 4.0f, 1e-4f);
+}
+
 }  // namespace tiramisu

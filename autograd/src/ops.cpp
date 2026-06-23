@@ -22,19 +22,16 @@ static Tensor reduce_grad_to(const Tensor& grad,
     return grad;
   }
 
-  int64_t extra_dims =
-      (int64_t)grad.shape().size() - (int64_t)target_shape.size();
-
   Tensor result = grad.contiguous();
-
-  for (int64_t d = 0; d < extra_dims; d++) {
+  while (result.shape().size() > target_shape.size()) {
     int64_t rows = result.shape()[0];
+    std::vector<int64_t> out_shape(result.shape().begin() + 1,
+                                    result.shape().end());
     int64_t cols = result.numel() / rows;
 
-    Tensor summed({cols});
-
-    float* src = result.data<float>();
+    Tensor summed(out_shape);
     float* dst = summed.data<float>();
+    const float* src = result.data<float>();
     std::fill_n(dst, cols, 0.0f);
 
     for (int64_t r = 0; r < rows; r++) {
@@ -44,6 +41,7 @@ static Tensor reduce_grad_to(const Tensor& grad,
     }
     result = summed;
   }
+
   return result;
 }
 
@@ -277,9 +275,19 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
     auto node = std::make_shared<Node>();
     node->inputs = {a, b};
     node->backward_fn = [a, b](const Tensor& grad_output) {
-      Tensor grad_a = tiramisu::ops::matmul(grad_output, b.transpose(0, 1));
+      auto transpose_last_two = [](const Tensor& t) {
+        int64_t rank = static_cast<int64_t>(t.shape().size());
+        return t.transpose(rank - 2, rank - 1);
+      };
 
-      Tensor grad_b = tiramisu::ops::matmul(a.transpose(0, 1), grad_output);
+      Tensor grad_a =
+          tiramisu::ops::matmul(grad_output, transpose_last_two(b));
+      grad_a = reduce_grad_to(grad_a, a.shape());
+
+      Tensor grad_b =
+          tiramisu::ops::matmul(transpose_last_two(a), grad_output);
+      grad_b = reduce_grad_to(grad_b, b.shape());
+
       return std::vector<Tensor>{grad_a, grad_b};
     };
     out.set_requires_grad(true);

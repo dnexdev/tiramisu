@@ -120,6 +120,49 @@ TEST(AutogradGradcheckTest, MatmulWrtB) {
   EXPECT_TRUE(autograd::gradcheck(f, B, 1e-2, 1e-2));
 }
 
+TEST(AutogradGradcheckTest, BatchedMatmulWrtA) {
+  Tensor B({1, 2, 2});
+  B.at<float>({0, 0, 0}) = 1.0f;
+  B.at<float>({0, 0, 1}) = 2.0f;
+  B.at<float>({0, 1, 0}) = 3.0f;
+  B.at<float>({0, 1, 1}) = 4.0f;
+
+  Tensor A({1, 2, 2});
+  A.at<float>({0, 0, 0}) = 5.0f;
+  A.at<float>({0, 0, 1}) = 6.0f;
+  A.at<float>({0, 1, 0}) = 7.0f;
+  A.at<float>({0, 1, 1}) = 8.0f;
+
+  auto f = [&B](const Tensor& t) {
+    return autograd::sum(autograd::matmul(t, B));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, A, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, BatchedMatmulBroadcastWrtB) {
+  Tensor W({2, 2});
+  W.at<float>({0, 0}) = 1.0f;
+  W.at<float>({0, 1}) = 2.0f;
+  W.at<float>({1, 0}) = 3.0f;
+  W.at<float>({1, 1}) = 4.0f;
+  W.set_requires_grad(true);
+
+  Tensor X({2, 2, 2});
+  X.at<float>({0, 0, 0}) = 1.0f;
+  X.at<float>({0, 0, 1}) = 2.0f;
+  X.at<float>({0, 1, 0}) = 3.0f;
+  X.at<float>({0, 1, 1}) = 4.0f;
+  X.at<float>({1, 0, 0}) = 5.0f;
+  X.at<float>({1, 0, 1}) = 6.0f;
+  X.at<float>({1, 1, 0}) = 7.0f;
+  X.at<float>({1, 1, 1}) = 8.0f;
+
+  auto f = [&X](const Tensor& w) {
+    return autograd::sum(autograd::matmul(X, w));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, W, 1e-2, 1e-2));
+}
+
 TEST(AutogradGradcheckTest, Softmax) {
   Tensor x({1, 4});
   x.at<float>({0, 0}) = 1.0f;

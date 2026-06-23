@@ -5,6 +5,11 @@ add_library(tiramisu_nn
   src/loss.cpp
   src/module.cpp
   src/layernorm.cpp
+  src/embedding.cpp
+  src/multi_head_attention.cpp
+  src/feed_forward.cpp
+  src/transformer_block.cpp
+  src/gpt.cpp
 )
 
 target_include_directories(tiramisu_nn PUBLIC

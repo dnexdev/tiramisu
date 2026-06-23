@@ -5,6 +5,9 @@
 #include "tiramisu/autograd/gradcheck.hpp"
 #include "tiramisu/autograd/ops.hpp"
 #include "tiramisu/core/tensor.hpp"
+#include "tiramisu/nn/linear.hpp"
+#include "tiramisu/nn/layernorm.hpp"
+#include "tiramisu/nn/multi_head_attention.hpp"
 
 namespace tiramisu {
 
@@ -64,6 +67,12 @@ TEST(AutogradGradcheckTest, ReluPositiveBranch) {
   Tensor x({1});
   x.at<float>({0}) = 2.0f;
   EXPECT_TRUE(autograd::gradcheck(autograd::relu, x, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, Gelu) {
+  Tensor x({1});
+  x.at<float>({0}) = 1.0f;
+  EXPECT_TRUE(autograd::gradcheck(autograd::gelu, x, 1e-2, 1e-2));
 }
 
 TEST(AutogradGradcheckTest, Sum) {
@@ -190,6 +199,121 @@ TEST(AutogradGradcheckTest, LayerNorm) {
     return autograd::sum(autograd::layernorm(t, gamma, beta));
   };
   EXPECT_TRUE(autograd::gradcheck(f, x, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, MhaOnLayerNorm) {
+  nn::LayerNorm ln(8);
+  nn::MultiHeadAttention mha(8, 2);
+  Tensor x({1, 4, 8});
+  for (int64_t i = 0; i < x.numel(); ++i) {
+    x.data<float>()[i] = static_cast<float>(i) * 0.015f;
+  }
+  auto f = [&ln, &mha](const Tensor& t) {
+    return autograd::sum(mha.forward(ln.forward(t)));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, x, 1e-3, 1e-1));
+}
+
+TEST(AutogradGradcheckTest, MhaResidualNoLn) {
+  nn::MultiHeadAttention mha(8, 2);
+  Tensor x({1, 4, 8});
+  for (int64_t i = 0; i < x.numel(); ++i) {
+    x.data<float>()[i] = static_cast<float>(i) * 0.015f;
+  }
+  auto f = [&mha](const Tensor& t) {
+    return autograd::sum(autograd::add(t, mha.forward(t)));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, x, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, ReshapePermute) {
+  Tensor x({1, 4, 8});
+  for (int64_t i = 0; i < x.numel(); ++i) {
+    x.data<float>()[i] = static_cast<float>(i) * 0.03f;
+  }
+  auto f = [](const Tensor& t) {
+    Tensor y = autograd::permute(
+        autograd::reshape(t, {1, 4, 2, 4}), {0, 2, 1, 3});
+    return autograd::sum(y);
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, x, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, Linear3D) {
+  nn::Linear layer(8, 8);
+  Tensor x({1, 4, 8});
+  for (int64_t i = 0; i < x.numel(); ++i) {
+    x.data<float>()[i] = static_cast<float>(i) * 0.02f;
+  }
+  auto f = [&layer](const Tensor& t) {
+    return autograd::sum(layer.forward(t));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, x, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, Linear3DSplitHeads) {
+  nn::Linear layer(8, 8);
+  Tensor x({1, 4, 8});
+  for (int64_t i = 0; i < x.numel(); ++i) {
+    x.data<float>()[i] = static_cast<float>(i) * 0.02f;
+  }
+  auto f = [&layer](const Tensor& t) {
+    Tensor q = layer.forward(t);
+    Tensor y = autograd::permute(
+        autograd::reshape(q, {1, 4, 2, 4}), {0, 2, 1, 3});
+    return autograd::sum(y);
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, x, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, MergeHeads) {
+  Tensor x({1, 2, 4, 4});
+  for (int64_t i = 0; i < x.numel(); ++i) {
+    x.data<float>()[i] = static_cast<float>(i) * 0.02f;
+  }
+  auto f = [](const Tensor& t) {
+    return autograd::sum(autograd::merge_heads(t, 8));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, x, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, MatmulTranspose) {
+  Tensor a({1, 2, 4, 4});
+  Tensor b({1, 2, 4, 4});
+  for (int64_t i = 0; i < a.numel(); ++i) {
+    a.data<float>()[i] = static_cast<float>(i) * 0.01f;
+    b.data<float>()[i] = static_cast<float>(i) * 0.02f;
+  }
+  auto f = [&a](const Tensor& t) {
+    return autograd::sum(
+        autograd::matmul(a, autograd::transpose(t, -2, -1)));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, b, 1e-2, 1e-2));
+}
+
+TEST(AutogradGradcheckTest, AttentionScores) {
+  Tensor q({1, 2, 4, 4});
+  Tensor k({1, 2, 4, 4});
+  for (int64_t i = 0; i < q.numel(); ++i) {
+    q.data<float>()[i] = static_cast<float>(i) * 0.01f;
+    k.data<float>()[i] = static_cast<float>(i) * 0.015f;
+  }
+  auto f = [&k](const Tensor& t) {
+    Tensor scores =
+        autograd::matmul(t, autograd::transpose(k, -2, -1));
+    Tensor scale({1});
+    scale.at<float>({0}) = 0.5f;
+    scores = autograd::mul(scores, scale);
+    Tensor mask({4, 4});
+    for (int64_t i = 0; i < 4; ++i) {
+      for (int64_t j = 0; j < 4; ++j) {
+        mask.at<float>({i, j}) = (j > i) ? -1e9f : 0.0f;
+      }
+    }
+    scores = autograd::add(scores, mask);
+    return autograd::sum(autograd::softmax(scores));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, q, 1e-2, 1e-2));
 }
 
 }  // namespace tiramisu

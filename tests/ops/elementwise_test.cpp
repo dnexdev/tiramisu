@@ -116,3 +116,16 @@ TEST(ElementwiseTest, UnaryOps) {
   auto t_log = tiramisu::ops::log(t_exp);
   EXPECT_NEAR(t_log.at<float>({0}), 1.0f, 1e-4);
 }
+
+TEST(ElementwiseTest, GeluKnownValues) {
+  tiramisu::Tensor x({3});
+  x.at<float>({0}) = 0.0f;
+  x.at<float>({1}) = 1.0f;
+  x.at<float>({2}) = -1.0f;
+
+  tiramisu::Tensor y = tiramisu::ops::gelu(x);
+  EXPECT_NEAR(y.at<float>({0}), 0.0f, 1e-5f);
+  EXPECT_GT(y.at<float>({1}), 0.8f);
+  EXPECT_LT(y.at<float>({1}), 1.0f);
+  EXPECT_LT(y.at<float>({2}), 0.0f);
+}

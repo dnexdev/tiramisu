@@ -138,3 +138,26 @@ TEST(TensorTest, ScalarNumelMatchesEmptyShapeConvention) {
   EXPECT_TRUE(scalar.is_contiguous());
   EXPECT_EQ(scalar.numel(), 1);
 }
+
+TEST(TensorTest, ReshapeAfterTranspose) {
+  tiramisu::Tensor t({2, 3});
+  for (int i = 0; i < 6; ++i) {
+    t.data<float>()[i] = static_cast<float>(i);
+  }
+
+  tiramisu::Tensor transposed = t.transpose(0, 1);
+  EXPECT_FALSE(transposed.is_contiguous());
+
+  tiramisu::Tensor reshaped = transposed.reshape({3, 2});
+  EXPECT_TRUE(reshaped.is_contiguous());
+  EXPECT_EQ(reshaped.shape(), std::vector<int64_t>({3, 2}));
+  EXPECT_FLOAT_EQ(reshaped.at<float>({0, 0}), 0.0f);
+  EXPECT_FLOAT_EQ(reshaped.at<float>({0, 1}), 3.0f);
+  EXPECT_FLOAT_EQ(reshaped.at<float>({2, 1}), 5.0f);
+}
+
+TEST(TensorTest, TransposeNegativeDims) {
+  tiramisu::Tensor t({2, 3, 4, 5});
+  tiramisu::Tensor swapped = t.transpose(-2, -1);
+  EXPECT_EQ(swapped.shape(), std::vector<int64_t>({2, 3, 5, 4}));
+}

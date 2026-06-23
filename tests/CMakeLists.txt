@@ -21,6 +21,11 @@ add_executable(tiramisu_tests
   nn/sequential_test.cpp
   nn/loss_test.cpp
   nn/layernorm_test.cpp
+  nn/embedding_test.cpp
+  nn/multi_head_attention_test.cpp
+  nn/feed_forward_test.cpp
+  nn/transformer_block_test.cpp
+  nn/gpt_test.cpp
   # optim
   optim/sgd_test.cpp
   optim/adam_test.cpp

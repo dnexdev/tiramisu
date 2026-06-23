@@ -16,4 +16,9 @@ Tensor mean(const Tensor& t);
 Tensor matmul(const Tensor& a, const Tensor& b);
 
 void backward(const Tensor& loss);
+
+Tensor softmax(const Tensor& x);
+Tensor layernorm(const Tensor& x, const Tensor& gamma, const Tensor& beta,
+                 float eps = 1e-5f);
+
 }  // namespace tiramisu::autograd

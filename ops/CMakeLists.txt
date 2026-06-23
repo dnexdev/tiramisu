@@ -5,6 +5,7 @@ add_library(tiramisu_ops
   cpu/elementwise.cpp
   cpu/reduce.cpp
   cpu/matmul.cpp
+  cpu/normalization.cpp
 )
 
 target_include_directories(tiramisu_ops PUBLIC

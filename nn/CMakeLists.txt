@@ -4,6 +4,7 @@ add_library(tiramisu_nn
   src/sequential.cpp
   src/loss.cpp
   src/module.cpp
+  src/layernorm.cpp
 )
 
 target_include_directories(tiramisu_nn PUBLIC

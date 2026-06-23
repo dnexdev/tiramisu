@@ -109,11 +109,6 @@ int main() {
   Tensor test_x = load_mnist_images("../../data/t10k-images.idx3-ubyte");
   Tensor test_y = load_mnist_labels("../../data/t10k-labels.idx1-ubyte");
 
-  // auto model =
-  // std::make_shared<nn::Sequential>(std::vector<std::shared_ptr<nn::Module>>{
-  //     std::make_shared<nn::Linear>(784, 128),
-  //     std::make_shared<nn::Linear>(128, 10)
-  // });
   auto layer1 = std::make_shared<nn::Linear>(784, 128);
   auto layer2 = std::make_shared<nn::Linear>(128, 10);
 
@@ -122,7 +117,6 @@ int main() {
   for (auto p : layer2->parameters()) params.push_back(p);
 
   optim::Adam opt(params, 0.001f);
-  // optim::Adam opt(model->parameters(), 0.001f);
 
   const int batch_size = 64;
   int num_train = train_x.shape()[0];
@@ -166,19 +160,8 @@ int main() {
       Tensor logits = layer2->forward(h);
       Tensor loss = nn::cross_entropy_loss(logits, batch_y);
 
-      // Inside your batch loop (for the very first batch):
-      if (epoch == 0 && b == 0) {
-        float* w = layer1->parameters()[0]->data<float>();
-        printf("BEFORE STEP: %f, %f, %f\n", w[0], w[1], w[2]);
-      }
-
       autograd::backward(loss);
       opt.step();
-
-      if (epoch == 0 && b == 0) {
-        float* w = layer1->parameters()[0]->data<float>();
-        printf("AFTER STEP:  %f, %f, %f\n", w[0], w[1], w[2]);
-      }
 
       total_loss += loss.data<float>()[0];
     }

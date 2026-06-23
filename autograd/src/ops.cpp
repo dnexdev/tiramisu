@@ -1,12 +1,14 @@
 #include "tiramisu/autograd/ops.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <unordered_set>
 
 #include "tiramisu/autograd/grad_mode.hpp"
 #include "tiramisu/core/node.hpp"
 #include "tiramisu/ops/elementwise.hpp"
 #include "tiramisu/ops/matmul.hpp"
+#include "tiramisu/ops/normalization.hpp"
 #include "tiramisu/ops/reduce.hpp"
 
 namespace tiramisu::autograd {
@@ -279,6 +281,120 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
 
       Tensor grad_b = tiramisu::ops::matmul(a.transpose(0, 1), grad_output);
       return std::vector<Tensor>{grad_a, grad_b};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+
+Tensor softmax(const Tensor& x) {
+  Tensor out = tiramisu::ops::softmax(x);
+  if (grad_enabled() && x.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {x};
+    Tensor out_val(out.shape(), out.dtype(), out.device());
+    std::copy(out.data<float>(), out.data<float>() + out.numel(),
+              out_val.data<float>());
+    node->backward_fn = [out_val](const Tensor& grad_output) {
+      auto shape = out_val.shape();
+      int64_t N = shape.back();
+      int64_t rows = out_val.numel() / N;
+
+      Tensor c_grad = grad_output.contiguous();
+      Tensor c_out = out_val.contiguous();
+      Tensor grad_x(shape);
+
+      const float* go = c_grad.data<float>();
+      const float* out_data = c_out.data<float>();
+      float* gx = grad_x.data<float>();
+
+      for (int64_t r = 0; r < rows; r++) {
+        const float* go_row = go + r * N;
+        const float* out_row = out_data + r * N;
+        float* gx_row = gx + r * N;
+
+        float dot = 0.0f;
+        for (int64_t i = 0; i < N; i++) {
+          dot += go_row[i] * out_row[i];
+        }
+        for (int64_t i = 0; i < N; i++) {
+          gx_row[i] = out_row[i] * (go_row[i] - dot);
+        }
+      }
+      return std::vector<Tensor>{grad_x};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor layernorm(const Tensor& x, const Tensor& gamma, const Tensor& beta,
+                 float eps) {
+  Tensor out = tiramisu::ops::layernorm(x, gamma, beta, eps);
+  if (grad_enabled() && (x.requires_grad() || gamma.requires_grad() || beta.requires_grad())) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {x, gamma, beta};
+    node->backward_fn = [x, gamma, beta, eps](const Tensor& grad_output) {
+      int64_t N = x.shape().back();
+      int64_t rows = x.numel() / N;
+
+      Tensor grad_x(x.shape());
+      Tensor grad_gamma(gamma.shape());
+      Tensor grad_beta(gamma.shape());
+
+      float* gg = grad_gamma.data<float>();
+      float* gb = grad_beta.data<float>();
+      std::fill_n(gg, N, 0.0f);
+      std::fill_n(gb, N, 0.0f);
+
+      const float* x_data = x.contiguous().data<float>();
+      const float* go_data = grad_output.contiguous().data<float>();
+      const float* gamma_data = gamma.data<float>();
+      float* gx_data = grad_x.data<float>();
+
+      for (int64_t r = 0; r < rows; r++) {
+        const float* x_row = x_data + r * N;
+        const float* go_row = go_data + r * N;
+        float* gx_row = gx_data + r * N;
+
+        float mean = 0.0f;
+        for (int64_t i = 0; i < N; i++) mean += x_row[i];
+        mean /= N;
+
+        float var = 0.0f;
+        for (int64_t i = 0; i < N; i++) {
+          float diff = x_row[i] - mean;
+          var += diff * diff;
+        }
+        var /= N;
+
+        float inv_std = 1.0f / std::sqrt(var + eps);
+
+        float grad_var = 0.0f;
+        float grad_mean = 0.0f;
+        
+        for (int64_t i = 0; i < N; i++) {
+          float x_hat = (x_row[i] - mean) * inv_std;
+          float grad_x_hat = go_row[i] * gamma_data[i];
+          
+          gg[i] += go_row[i] * x_hat;
+          gb[i] += go_row[i];
+
+          grad_var += grad_x_hat * (x_row[i] - mean) * -0.5f * inv_std * inv_std * inv_std;
+          grad_mean += grad_x_hat * -inv_std;
+        }
+
+        for (int64_t i = 0; i < N; i++) {
+          float grad_x_hat = go_row[i] * gamma_data[i];
+          gx_row[i] = grad_x_hat * inv_std + 
+                      grad_var * 2.0f * (x_row[i] - mean) / N + grad_mean / N;
+        }
+      }
+
+      return std::vector<Tensor>{grad_x, grad_gamma, grad_beta};
     };
     out.set_requires_grad(true);
     out.set_grad_fn(node);

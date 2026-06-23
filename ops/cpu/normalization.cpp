@@ -3,9 +3,20 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "tiramisu/core/device.hpp"
+
+#ifdef TIRAMISU_CUDA_ENABLED
+#include "tiramisu/ops/cuda_ops.hpp"
+#endif
+
 namespace tiramisu::ops {
 
 Tensor softmax(const Tensor& x) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (x.device() == Device::CUDA) {
+    return cuda::softmax(x);
+  }
+#endif
   if (x.dtype() != DType::Float32) {
     throw std::runtime_error("softmax: only Float32 supported");
   }
@@ -45,6 +56,11 @@ Tensor softmax(const Tensor& x) {
 }
 
 Tensor layernorm(const Tensor& x, const Tensor& gamma, const Tensor& beta, float eps) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (x.device() == Device::CUDA) {
+    return cuda::layernorm(x, gamma, beta, eps);
+  }
+#endif
   if (x.shape().size() < 2) {
     throw std::invalid_argument("layernorm: input must be at least 2D");
   }

@@ -14,6 +14,7 @@ option(TIRAMISU_BUILD_TESTS "Build unit tests" ON)
 option(TIRAMISU_BUILD_EXAMPLES "Build example programs" ON)
 option(TIRAMISU_BUILD_BENCH "Build microbenchmarks" OFF)
 option(TIRAMISU_ENABLE_SANITIZERS "Build with ASan/UBSan in Debug builds" ON)
+option(TIRAMISU_ENABLE_CUDA "Build CUDA backend (requires CUDA toolkit)" OFF)
 
 # Shared interface targets
 
@@ -39,6 +40,7 @@ add_subdirectory(autograd)
 add_subdirectory(ops)
 add_subdirectory(nn)
 add_subdirectory(optim)
+add_subdirectory(serialize)
 
 # Tests, examples, and bench
 

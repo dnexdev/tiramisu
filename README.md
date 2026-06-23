@@ -6,9 +6,9 @@
 
 **The deep learning framework you can actually read.**
 
-Tiramisu is a from-scratch machine learning stack in **C++20** — about **2,300 lines** of framework code, structured like a production framework but small enough to read in an afternoon.
+Tiramisu is a from-scratch machine learning stack in **C++20** — about **5,000 lines** of framework code, structured like a production framework but small enough to read in an afternoon.
 
-- **~2,300 lines** of framework code (`core` → `ops` → `autograd` → `nn` → `optim`)
+- **~5,000 lines** of framework code (`core` → `ops` → `autograd` → `nn` → `optim`)
 - **Stdlib-only compute** — no Eigen, no BLAS, no PyTorch at link time
 - **PyTorch-familiar API** — `Tensor`, `requires_grad`, `backward()`, `Module`, `Linear`, `Adam`
 - **Built to teach** — explicit autograd graph, readable kernels, end-to-end MNIST
@@ -31,8 +31,8 @@ What's shipped today vs what's planned. Legend: ✅ shipped · 🚧 in progress 
 | NN + optim | ✅ | `Linear`, `cross_entropy_loss`, SGD, Adam, MNIST example |
 | Normalization | ✅ | `softmax`, `layernorm` forward + backward |
 | Batched matmul | ✅ | N-D GEMM with batch broadcast |
-| Transformer / GPT | 🚧 | Embedding, MHA, FFN, `TransformerBlock`, GPT |
-| CUDA backend | 📋 | `ops/cuda/` placeholder |
+| Transformer / GPT | ✅ | Embedding, MHA, FFN, `TransformerBlock`, GPT |
+| CUDA backend | 🚧 | Optional `ops/cuda/` (enable with `-DTIRAMISU_ENABLE_CUDA=ON`) |
 | Python bindings | 📋 | pybind11 wrapper |
 | Conv2d, serialize, quant | 📋 | README placeholders today |
 
@@ -186,15 +186,37 @@ Output: [`docs/assets/mnist_training.gif`](docs/assets/mnist_training.gif)
 
 ---
 
+## Char-level GPT training
+
+Train a tiny or ~10M-parameter GPT on [Tiny Shakespeare](data/tiny_shakespeare.txt):
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target train_shakespeare
+./build/examples/train_shakespeare --preset tiny --epochs 3
+```
+
+For the ~10M config (CPU-slow; use a rented GPU with `-DTIRAMISU_ENABLE_CUDA=ON`):
+
+```bash
+./scripts/run_10m_training.sh
+```
+
+Checkpoints use the binary format in `serialize/`. Options: `--preset tiny|10m`, `--checkpoint PATH`, `--max-batches N`.
+
+---
+
 ## Layout
 
 ```
 core/       Storage, Tensor, dtype, device
 ops/cpu/    Forward kernels (elementwise, reduce, matmul, normalization)
+ops/cuda/   Optional CUDA kernels (-DTIRAMISU_ENABLE_CUDA=ON)
 autograd/   Differentiable wrappers, backward(), gradcheck
-nn/         Module, Linear, loss, LayerNorm, …
-optim/      SGD, Adam
-examples/   hello_tiramisu, mnist
+nn/         Module, Linear, GPT, loss, LayerNorm, …
+optim/      SGD, Adam, AdamW, grad clipping, cosine LR
+serialize/  GPT checkpoint save/load
+examples/   hello_tiramisu, mnist, train_shakespeare
 tests/      GoogleTest (fetched by CMake)
 ```
 

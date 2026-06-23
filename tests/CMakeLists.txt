@@ -29,6 +29,11 @@ add_executable(tiramisu_tests
   # optim
   optim/sgd_test.cpp
   optim/adam_test.cpp
+  optim/adamw_test.cpp
+  optim/grad_clip_test.cpp
+  optim/lr_scheduler_test.cpp
+  # serialize
+  serialize/checkpoint_test.cpp
 )
 
 target_link_libraries(tiramisu_tests PRIVATE
@@ -37,6 +42,7 @@ target_link_libraries(tiramisu_tests PRIVATE
   tiramisu_autograd
   tiramisu_nn
   tiramisu_optim
+  tiramisu_serialize
   GTest::gtest_main
 )
 

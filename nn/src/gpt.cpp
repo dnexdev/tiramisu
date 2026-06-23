@@ -52,6 +52,13 @@ Tensor GPT::forward(const Tensor& token_ids) {
     x = block->forward(x);
   }
   x = ln_f_.forward(x);
+
+  if (config_.tie_weights) {
+    Tensor tied =
+        tiramisu::autograd::transpose(tok_emb_.weight(), 0, 1);
+    return tiramisu::autograd::add(tiramisu::autograd::matmul(x, tied),
+                                   lm_head_.bias());
+  }
   return lm_head_.forward(x);
 }
 
@@ -63,8 +70,20 @@ std::vector<Tensor*> GPT::parameters() {
     append_params(params, *block);
   }
   append_params(params, ln_f_);
-  append_params(params, lm_head_);
+  if (config_.tie_weights) {
+    params.push_back(&lm_head_.bias());
+  } else {
+    append_params(params, lm_head_);
+  }
   return params;
+}
+
+int64_t GPT::count_parameters() {
+  int64_t total = 0;
+  for (Tensor* p : parameters()) {
+    total += p->numel();
+  }
+  return total;
 }
 
 }  // namespace tiramisu::nn

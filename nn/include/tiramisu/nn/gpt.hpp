@@ -18,6 +18,7 @@ struct GPTConfig {
   int64_t num_heads;
   int64_t num_layers;
   int64_t max_seq_len;
+  bool tie_weights = false;
 };
 
 class GPT : public Module {
@@ -28,6 +29,7 @@ class GPT : public Module {
   std::vector<Tensor*> parameters() override;
 
   const GPTConfig& config() const { return config_; }
+  int64_t count_parameters();
 
  private:
   GPTConfig config_;

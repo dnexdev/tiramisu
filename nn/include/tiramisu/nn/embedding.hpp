@@ -12,6 +12,9 @@ class Embedding : public Module {
   Tensor forward(const Tensor& token_ids) override;
   std::vector<Tensor*> parameters() override;
 
+  Parameter& weight() { return weight_; }
+  const Parameter& weight() const { return weight_; }
+
  private:
   Parameter weight_;
 };

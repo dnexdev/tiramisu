@@ -7,7 +7,12 @@
 #include <stdexcept>
 #include <vector>
 
+#include "tiramisu/core/device.hpp"
 #include "tiramisu/ops/broadcast.hpp"
+
+#ifdef TIRAMISU_CUDA_ENABLED
+#include "tiramisu/ops/cuda_ops.hpp"
+#endif
 
 namespace tiramisu::ops {
 
@@ -132,6 +137,11 @@ std::vector<int64_t> precompute_batch_offsets(
 }  // namespace
 
 Tensor matmul(const Tensor& a, const Tensor& b) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (a.device() == Device::CUDA || b.device() == Device::CUDA) {
+    return cuda::matmul(a, b);
+  }
+#endif
   if (a.dtype() != DType::Float32 || b.dtype() != DType::Float32) {
     throw std::runtime_error("matmul: only Float32 supported");
   }

@@ -17,3 +17,5 @@ __pycache__/
 *.idx1-ubyte
 examples/train-images-idx3-ubyte/
 examples/train-labels-idx1-ubyte/
+
+tiny_shakespeare.txt

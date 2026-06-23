@@ -5,7 +5,12 @@
 #include <stdexcept>
 #include <vector>
 
+#include "tiramisu/core/device.hpp"
 #include "tiramisu/ops/broadcast.hpp"
+
+#ifdef TIRAMISU_CUDA_ENABLED
+#include "tiramisu/ops/cuda_ops.hpp"
+#endif
 
 namespace tiramisu {
 namespace ops {
@@ -91,6 +96,11 @@ Tensor apply_unary_op(const Tensor& t, Func op) {
 }
 
 Tensor add(const Tensor& a, const Tensor& b) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (a.device() == Device::CUDA || b.device() == Device::CUDA) {
+    return cuda::add(a, b);
+  }
+#endif
   return tiramisu::ops::apply_binary_op(a, b,
                                         [](float x, float y) { return x + y; });
 }
@@ -99,6 +109,11 @@ Tensor sub(const Tensor& a, const Tensor& b) {
                                         [](float x, float y) { return x - y; });
 }
 Tensor mul(const Tensor& a, const Tensor& b) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (a.device() == Device::CUDA || b.device() == Device::CUDA) {
+    return cuda::mul(a, b);
+  }
+#endif
   return tiramisu::ops::apply_binary_op(a, b,
                                         [](float x, float y) { return x * y; });
 }
@@ -117,6 +132,11 @@ Tensor log(const Tensor& t) {
   return tiramisu::ops::apply_unary_op(t, [](float x) { return std::log(x); });
 }
 Tensor relu(const Tensor& t) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (t.device() == Device::CUDA) {
+    return cuda::relu(t);
+  }
+#endif
   return tiramisu::ops::apply_unary_op(
       t, [](float x) { return std::max(0.0f, x); });
 }
@@ -135,6 +155,11 @@ float gelu_forward(float x) {
 }  // namespace
 
 Tensor gelu(const Tensor& t) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (t.device() == Device::CUDA) {
+    return cuda::gelu(t);
+  }
+#endif
   return tiramisu::ops::apply_unary_op(t, gelu_forward);
 }
 

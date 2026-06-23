@@ -3,6 +3,7 @@ add_library(tiramisu_core
   src/storage.cpp
   src/tensor.cpp
   src/dtype.cpp
+  src/cuda_common.cpp
 )
 
 target_include_directories(tiramisu_core PUBLIC

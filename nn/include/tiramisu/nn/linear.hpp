@@ -12,9 +12,12 @@ class Linear : public Module {
   Tensor forward(const Tensor& x) override;
   std::vector<Tensor*> parameters() override;
 
+  Parameter& weight() { return weight_; }
+  Parameter& bias() { return bias_; }
+
  private:
-  Parameter weight;
-  Parameter bias;
+  Parameter weight_;
+  Parameter bias_;
 };
 
 }  // namespace tiramisu::nn

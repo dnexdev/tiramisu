@@ -19,10 +19,6 @@ Tensor split_heads(const Tensor& x, int64_t num_heads) {
       {0, 2, 1, 3});
 }
 
-Tensor merge_heads(const Tensor& x, int64_t d_model) {
-  return tiramisu::autograd::merge_heads(x, d_model);
-}
-
 Tensor make_causal_mask(int64_t seq_len) {
   Tensor mask({seq_len, seq_len});
   for (int64_t i = 0; i < seq_len; i++) {
@@ -67,13 +63,16 @@ Tensor MultiHeadAttention::forward(const Tensor& x) {
   scores = tiramisu::autograd::mul(scores, scale);
 
   if (causal_) {
-    Tensor mask = make_causal_mask(seq);
-    scores = tiramisu::autograd::add(scores, mask);
+    if (cached_mask_seq_ != seq) {
+      cached_mask_ = make_causal_mask(seq);
+      cached_mask_seq_ = seq;
+    }
+    scores = tiramisu::autograd::add(scores, *cached_mask_);
   }
 
   Tensor weights = tiramisu::autograd::softmax(scores);
   Tensor context = tiramisu::autograd::matmul(weights, v);
-  Tensor merged = merge_heads(context, d_model_);
+  Tensor merged = tiramisu::autograd::merge_heads(context, d_model_);
   return w_o_.forward(merged);
 }
 

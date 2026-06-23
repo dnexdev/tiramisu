@@ -1,6 +1,9 @@
 add_library(tiramisu_optim
   src/sgd.cpp
   src/adam.cpp
+  src/adamw.cpp
+  src/grad_clip.cpp
+  src/lr_scheduler.cpp
 )
 
 target_include_directories(tiramisu_optim PUBLIC

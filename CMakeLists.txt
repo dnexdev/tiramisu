@@ -13,7 +13,12 @@ endif()
 option(TIRAMISU_BUILD_TESTS "Build unit tests" ON)
 option(TIRAMISU_BUILD_EXAMPLES "Build example programs" ON)
 option(TIRAMISU_BUILD_BENCH "Build microbenchmarks" OFF)
+option(TIRAMISU_BUILD_PYTHON "Build pybind11 Python extension" OFF)
 option(TIRAMISU_ENABLE_SANITIZERS "Build with ASan/UBSan in Debug builds" ON)
+
+if (TIRAMISU_BUILD_PYTHON)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # Shared interface targets
 
@@ -62,4 +67,8 @@ endif()
 
 if (TIRAMISU_BUILD_BENCH)
   add_subdirectory(bench)
+endif()
+
+if (TIRAMISU_BUILD_PYTHON)
+  add_subdirectory(python)
 endif()

@@ -10,7 +10,10 @@ compile_commands.json
 .idea/
 __pycache__/
 *.egg-info/
-.venv
+.venv/
+dist/
+build/
+*.whl
 
 # MNIST data files
 *.idx3-ubyte

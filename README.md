@@ -32,7 +32,7 @@ What's shipped today vs what's planned. Legend: ✅ shipped · 🚧 in progress 
 | Normalization | ✅ | `softmax`, `layernorm` forward + backward |
 | Batched matmul | ✅ | N-D GEMM with batch broadcast |
 | Transformer / GPT | ✅ | Embedding, MHA, FFN, `TransformerBlock`, GPT |
-| CUDA backend | 🚧 | Optional `ops/cuda/` (enable with `-DTIRAMISU_ENABLE_CUDA=ON`) |
+| CUDA backend | ✅ | GPU training via `-DTIRAMISU_ENABLE_CUDA=ON` and `--cuda` |
 | Python bindings | 📋 | pybind11 wrapper |
 | Conv2d, serialize, quant | 📋 | README placeholders today |
 
@@ -188,7 +188,7 @@ Output: [`docs/assets/mnist_training.gif`](docs/assets/mnist_training.gif)
 
 ## Char-level GPT training
 
-Train a tiny or ~10M-parameter GPT on [Tiny Shakespeare](data/tiny_shakespeare.txt):
+Train a tiny, ~2M, or ~10M-parameter GPT on [Tiny Shakespeare](data/tiny_shakespeare.txt):
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -196,13 +196,28 @@ cmake --build build --target train_shakespeare
 ./build/examples/train_shakespeare --preset tiny --epochs 3
 ```
 
-For the ~10M config (CPU-slow; use a rented GPU with `-DTIRAMISU_ENABLE_CUDA=ON`):
+GPU training (~2M preset tuned for a 6GB card):
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTIRAMISU_ENABLE_CUDA=ON
+cmake --build build --target train_shakespeare
+./build/examples/train_shakespeare --preset 2m --cuda --epochs 5 \
+  --checkpoint build/shakespeare_2m.ckpt
+```
+
+Smoke test on GPU:
+
+```bash
+./build/examples/train_shakespeare --preset tiny --cuda --epochs 1 --max-batches 10
+```
+
+For the ~10M config (CPU-slow; use CUDA when available):
 
 ```bash
 ./scripts/run_10m_training.sh
 ```
 
-Checkpoints use the binary format in `serialize/`. Options: `--preset tiny|10m`, `--checkpoint PATH`, `--max-batches N`.
+Checkpoints use the binary format in `serialize/`. Options: `--preset tiny|2m|10m`, `--cuda`, `--checkpoint PATH`, `--max-batches N`.
 
 ---
 

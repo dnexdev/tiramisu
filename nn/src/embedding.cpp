@@ -4,8 +4,8 @@
 
 namespace tiramisu::nn {
 
-Embedding::Embedding(int64_t vocab_size, int64_t d_model)
-    : weight_({vocab_size, d_model}) {}
+Embedding::Embedding(int64_t vocab_size, int64_t d_model, Device device)
+    : weight_({vocab_size, d_model}, device) {}
 
 Tensor Embedding::forward(const Tensor& token_ids) {
   return tiramisu::autograd::embedding(weight_, token_ids);

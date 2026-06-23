@@ -6,15 +6,20 @@
 #include <unordered_set>
 
 #include "tiramisu/autograd/grad_mode.hpp"
+#include "tiramisu/core/cuda_memory.hpp"
 #include "tiramisu/core/node.hpp"
 #include "tiramisu/ops/elementwise.hpp"
+#include "tiramisu/ops/embedding.hpp"
 #include "tiramisu/ops/matmul.hpp"
 #include "tiramisu/ops/normalization.hpp"
 #include "tiramisu/ops/reduce.hpp"
 
+#ifdef TIRAMISU_CUDA_ENABLED
+#include "tiramisu/ops/cuda_ops.hpp"
+#endif
+
 namespace tiramisu::autograd {
 
-// Sum grad over broadcast dims to match target_shape.
 static Tensor reduce_grad_to(const Tensor& grad,
                              const std::vector<int64_t>& target_shape) {
   if (grad.shape() == target_shape) {
@@ -23,15 +28,21 @@ static Tensor reduce_grad_to(const Tensor& grad,
 
   Tensor result = grad.contiguous();
   while (result.shape().size() > target_shape.size()) {
+#ifdef TIRAMISU_CUDA_ENABLED
+    if (result.device() == Device::CUDA) {
+      result = ops::cuda::reduce_sum_first_dim(result);
+      continue;
+    }
+#endif
     int64_t rows = result.shape()[0];
     std::vector<int64_t> out_shape(result.shape().begin() + 1,
                                     result.shape().end());
     int64_t cols = result.numel() / rows;
 
-    Tensor summed(out_shape);
+    Tensor summed(out_shape, result.dtype(), result.device());
     float* dst = summed.data<float>();
     const float* src = result.data<float>();
-    std::fill_n(dst, cols, 0.0f);
+    cuda_mem::fill_f32(dst, 0.0f, cols, result.device());
 
     for (int64_t r = 0; r < rows; r++) {
       for (int64_t c = 0; c < cols; c++) {
@@ -95,7 +106,8 @@ void backward(const Tensor& loss) {
   build_topo(loss);
 
   Tensor ones_grad(loss.shape(), loss.dtype(), loss.device());
-  std::fill_n(ones_grad.data<float>(), ones_grad.numel(), 1.0f);
+  cuda_mem::fill_f32(ones_grad.data<float>(), 1.0f, ones_grad.numel(),
+                     loss.device());
   Tensor loss_mut = loss;
   loss_mut.accumulate_grad(ones_grad);
 
@@ -172,8 +184,9 @@ Tensor exp(const Tensor& t) {
     auto node = std::make_shared<Node>();
     node->inputs = {t};
     Tensor out_val(out.shape(), out.dtype(), out.device());
-    std::copy(out.data<float>(), out.data<float>() + out.numel(),
-              out_val.data<float>());
+    cuda_mem::copy_bytes(out.data<float>(), out_val.data<float>(),
+                         static_cast<std::size_t>(out.numel()) * sizeof(float),
+                         out.device(), out.device());
     node->backward_fn = [out_val](const Tensor& grad_output) {
       return std::vector<Tensor>{tiramisu::ops::mul(grad_output, out_val)};
     };
@@ -203,6 +216,11 @@ Tensor relu(const Tensor& t) {
     auto node = std::make_shared<Node>();
     node->inputs = {t};
     node->backward_fn = [t](const Tensor& grad_output) {
+#ifdef TIRAMISU_CUDA_ENABLED
+      if (t.device() == Device::CUDA) {
+        return std::vector<Tensor>{ops::cuda::relu_backward(grad_output, t)};
+      }
+#endif
       Tensor t_c = t.contiguous();
       Tensor g_c = grad_output.contiguous();
       Tensor grad_t(t_c.shape(), t_c.dtype(), t_c.device());
@@ -231,6 +249,11 @@ Tensor gelu(const Tensor& t) {
     node->inputs = {t};
     Tensor t_val = t.contiguous();
     node->backward_fn = [t_val](const Tensor& grad_output) {
+#ifdef TIRAMISU_CUDA_ENABLED
+      if (t_val.device() == Device::CUDA) {
+        return std::vector<Tensor>{ops::cuda::gelu_backward(grad_output, t_val)};
+      }
+#endif
       constexpr float kSqrt2OverPi = 0.7978845608f;
       constexpr float kCoeff = 0.044715f;
 
@@ -271,8 +294,15 @@ Tensor sum(const Tensor& t) {
     auto t_shape = t.shape();
     node->backward_fn = [t_shape](const Tensor& grad_output) {
       Tensor grad_t(t_shape, grad_output.dtype(), grad_output.device());
-      float g_val = grad_output.data<float>()[0];
-      std::fill_n(grad_t.data<float>(), grad_t.numel(), g_val);
+#ifdef TIRAMISU_CUDA_ENABLED
+      const float g_val = grad_output.device() == Device::CUDA
+                              ? cuda_mem::read_scalar_f32(grad_output)
+                              : grad_output.data<float>()[0];
+#else
+      const float g_val = grad_output.data<float>()[0];
+#endif
+      cuda_mem::fill_f32(grad_t.data<float>(), g_val, grad_t.numel(),
+                         grad_t.device());
 
       return std::vector<Tensor>{grad_t};
     };
@@ -291,9 +321,15 @@ Tensor mean(const Tensor& t) {
     auto n = t.numel();
     node->backward_fn = [t_shape, n](const Tensor& grad_output) {
       Tensor grad_t(t_shape, grad_output.dtype(), grad_output.device());
-
-      float g_val = grad_output.data<float>()[0] / static_cast<float>(n);
-      std::fill_n(grad_t.data<float>(), grad_t.numel(), g_val);
+#ifdef TIRAMISU_CUDA_ENABLED
+      const float g_val = grad_output.device() == Device::CUDA
+                              ? cuda_mem::read_scalar_f32(grad_output)
+                              : grad_output.data<float>()[0];
+#else
+      const float g_val = grad_output.data<float>()[0];
+#endif
+      cuda_mem::fill_f32(grad_t.data<float>(), g_val / static_cast<float>(n),
+                         grad_t.numel(), grad_t.device());
 
       return std::vector<Tensor>{grad_t};
     };
@@ -330,8 +366,14 @@ Tensor contiguous(const Tensor& x) {
     auto node = std::make_shared<Node>();
     node->inputs = {x};
     node->backward_fn = [x](const Tensor& grad_output) {
-      Tensor grad_in(x.shape());
-      std::fill_n(grad_in.data<float>(), grad_in.numel(), 0.0f);
+#ifdef TIRAMISU_CUDA_ENABLED
+      if (x.device() == Device::CUDA) {
+        return std::vector<Tensor>{ops::cuda::contiguous_backward(grad_output, x)};
+      }
+#endif
+      Tensor grad_in(x.shape(), x.dtype(), x.device());
+      cuda_mem::fill_f32(grad_in.data<float>(), 0.0f, grad_in.numel(),
+                         x.device());
 
       const float* src = grad_output.data<float>();
       float* dst = grad_in.data<float>();
@@ -422,7 +464,25 @@ Tensor merge_heads(const Tensor& x, int64_t d_model) {
     throw std::invalid_argument("merge_heads: heads * d_k must equal d_model");
   }
 
-  Tensor out({batch, seq, d_model});
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (x.device() == Device::CUDA) {
+    Tensor out = ops::cuda::merge_heads(x, d_model);
+    if (grad_enabled() && x.requires_grad()) {
+      auto node = std::make_shared<Node>();
+      node->inputs = {x};
+      node->backward_fn = [batch, heads, seq, d_k,
+                           d_model](const Tensor& grad_output) {
+        return std::vector<Tensor>{ops::cuda::merge_heads_backward(
+            grad_output, batch, heads, seq, d_k, d_model)};
+      };
+      out.set_requires_grad(true);
+      out.set_grad_fn(node);
+    }
+    return out;
+  }
+#endif
+
+  Tensor out({batch, seq, d_model}, x.dtype(), x.device());
   Tensor c_x = x.contiguous();
   const float* src = c_x.data<float>();
   float* dst = out.data<float>();
@@ -444,8 +504,16 @@ Tensor merge_heads(const Tensor& x, int64_t d_model) {
     node->inputs = {x};
     node->backward_fn = [batch, heads, seq, d_k,
                          d_model](const Tensor& grad_output) {
-      Tensor grad_in({batch, heads, seq, d_k});
-      std::fill_n(grad_in.data<float>(), grad_in.numel(), 0.0f);
+#ifdef TIRAMISU_CUDA_ENABLED
+      if (grad_output.device() == Device::CUDA) {
+        return std::vector<Tensor>{ops::cuda::merge_heads_backward(
+            grad_output, batch, heads, seq, d_k, d_model)};
+      }
+#endif
+      Tensor grad_in({batch, heads, seq, d_k}, grad_output.dtype(),
+                     grad_output.device());
+      cuda_mem::fill_f32(grad_in.data<float>(), 0.0f, grad_in.numel(),
+                         grad_output.device());
 
       Tensor c_grad = grad_output.contiguous();
       const float* gsrc = c_grad.data<float>();
@@ -473,44 +541,29 @@ Tensor merge_heads(const Tensor& x, int64_t d_model) {
 }
 
 Tensor embedding(const Tensor& weight, const Tensor& indices) {
-  if (weight.shape().size() != 2) {
-    throw std::invalid_argument("embedding: weight must be 2D");
-  }
-  if (indices.shape().size() != 2) {
-    throw std::invalid_argument("embedding: indices must be 2D");
-  }
-
-  const int64_t batch = indices.shape()[0];
-  const int64_t seq = indices.shape()[1];
-  const int64_t vocab = weight.shape()[0];
-  const int64_t dim = weight.shape()[1];
-
-  Tensor c_indices = indices.contiguous();
-  Tensor out({batch, seq, dim});
-  const float* w = weight.data<float>();
-  const float* idx = c_indices.data<float>();
-  float* o = out.data<float>();
-
-  for (int64_t b = 0; b < batch; b++) {
-    for (int64_t s = 0; s < seq; s++) {
-      const int64_t token =
-          static_cast<int64_t>(idx[b * seq + s]);
-      if (token < 0 || token >= vocab) {
-        throw std::out_of_range("embedding: token index out of range");
-      }
-      const float* row = w + token * dim;
-      float* out_row = o + (b * seq + s) * dim;
-      std::copy(row, row + dim, out_row);
-    }
-  }
+  Tensor out = tiramisu::ops::embedding(weight, indices);
 
   if (grad_enabled() && weight.requires_grad()) {
+    const int64_t batch = indices.shape()[0];
+    const int64_t seq = indices.shape()[1];
+    const int64_t vocab = weight.shape()[0];
+    const int64_t dim = weight.shape()[1];
+    Tensor c_indices = indices.contiguous();
     auto node = std::make_shared<Node>();
     node->inputs = {weight, indices};
     node->backward_fn = [c_indices, batch, seq, vocab,
                          dim](const Tensor& grad_output) {
-      Tensor grad_weight({vocab, dim});
-      std::fill_n(grad_weight.data<float>(), vocab * dim, 0.0f);
+#ifdef TIRAMISU_CUDA_ENABLED
+      if (grad_output.device() == Device::CUDA) {
+        Tensor grad_weight =
+            ops::cuda::embedding_backward(grad_output, c_indices, vocab, dim);
+        Tensor grad_indices({1});
+        return std::vector<Tensor>{grad_weight, grad_indices};
+      }
+#endif
+      Tensor grad_weight({vocab, dim}, grad_output.dtype(), grad_output.device());
+      cuda_mem::fill_f32(grad_weight.data<float>(), 0.0f, vocab * dim,
+                         grad_output.device());
 
       Tensor c_grad = grad_output.contiguous();
       const float* g = c_grad.data<float>();
@@ -572,16 +625,23 @@ Tensor softmax(const Tensor& x) {
     auto node = std::make_shared<Node>();
     node->inputs = {x};
     Tensor out_val(out.shape(), out.dtype(), out.device());
-    std::copy(out.data<float>(), out.data<float>() + out.numel(),
-              out_val.data<float>());
+    cuda_mem::copy_bytes(out.data<float>(), out_val.data<float>(),
+                         static_cast<std::size_t>(out.numel()) * sizeof(float),
+                         out.device(), out.device());
     node->backward_fn = [out_val](const Tensor& grad_output) {
+#ifdef TIRAMISU_CUDA_ENABLED
+      if (out_val.device() == Device::CUDA) {
+        return std::vector<Tensor>{
+            ops::cuda::softmax_backward(grad_output, out_val)};
+      }
+#endif
       auto shape = out_val.shape();
       int64_t N = shape.back();
       int64_t rows = out_val.numel() / N;
 
       Tensor c_grad = grad_output.contiguous();
       Tensor c_out = out_val.contiguous();
-      Tensor grad_x(shape);
+      Tensor grad_x(shape, out_val.dtype(), out_val.device());
 
       const float* go = c_grad.data<float>();
       const float* out_data = c_out.data<float>();
@@ -615,12 +675,21 @@ Tensor layernorm(const Tensor& x, const Tensor& gamma, const Tensor& beta,
     auto node = std::make_shared<Node>();
     node->inputs = {x, gamma, beta};
     node->backward_fn = [x, gamma, beta, eps](const Tensor& grad_output) {
+#ifdef TIRAMISU_CUDA_ENABLED
+      if (x.device() == Device::CUDA) {
+        Tensor grad_gamma(gamma.shape(), gamma.dtype(), Device::CUDA);
+        Tensor grad_beta(gamma.shape(), gamma.dtype(), Device::CUDA);
+        Tensor grad_x = ops::cuda::layernorm_backward(
+            grad_output, x, gamma, eps, grad_gamma, grad_beta);
+        return std::vector<Tensor>{grad_x, grad_gamma, grad_beta};
+      }
+#endif
       int64_t N = x.shape().back();
       int64_t rows = x.numel() / N;
 
-      Tensor grad_x(x.shape());
-      Tensor grad_gamma(gamma.shape());
-      Tensor grad_beta(gamma.shape());
+      Tensor grad_x(x.shape(), x.dtype(), x.device());
+      Tensor grad_gamma(gamma.shape(), gamma.dtype(), gamma.device());
+      Tensor grad_beta(gamma.shape(), gamma.dtype(), gamma.device());
 
       float* gg = grad_gamma.data<float>();
       float* gb = grad_beta.data<float>();

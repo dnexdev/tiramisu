@@ -3,23 +3,52 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <vector>
 
+#include "tiramisu/core/cuda_memory.hpp"
 #include "tiramisu/core/node.hpp"
+
+#ifdef TIRAMISU_CUDA_ENABLED
+#include "tiramisu/ops/cuda_ops.hpp"
+#endif
 
 namespace tiramisu::nn {
 
 Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
-  if (logits.shape().size() != 2)
+  if (logits.shape().size() != 2) {
     throw std::invalid_argument(
         "cross_entropy_loss: logits must be 2D (batch, classes)");
+  }
 
-  int64_t batch = logits.shape()[0];
-  int64_t C = logits.shape()[1];
+  const int64_t batch = logits.shape()[0];
+  const int64_t C = logits.shape()[1];
+
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (logits.device() == Device::CUDA) {
+    Tensor softmax_buf({batch, C}, DType::Float32, Device::CUDA);
+    Tensor c_targets = targets.contiguous();
+    Tensor loss =
+        ops::cuda::cross_entropy_forward(logits, c_targets, softmax_buf);
+
+    if (logits.requires_grad()) {
+      auto node = std::make_shared<tiramisu::Node>();
+      node->inputs = {logits};
+      node->backward_fn = [softmax_buf, c_targets, batch,
+                           C](const Tensor& grad_output) {
+        return std::vector<Tensor>{ops::cuda::cross_entropy_backward(
+            grad_output, softmax_buf, c_targets, batch, C)};
+      };
+      loss.set_requires_grad(true);
+      loss.set_grad_fn(node);
+    }
+    return loss;
+  }
+#endif
 
   Tensor c_logits = logits.contiguous();
   const float* logit_data = c_logits.data<float>();
 
-  std::vector<float> softmax_vals(batch * C);
+  std::vector<float> softmax_vals(static_cast<size_t>(batch * C));
   float total_loss = 0.0f;
 
   for (int64_t i = 0; i < batch; i++) {
@@ -28,17 +57,19 @@ Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
     float row_max = *std::max_element(row, row + C);
     float sum_exp = 0.0f;
     for (int64_t c = 0; c < C; c++) {
-      softmax_vals[i * C + c] = std::exp(row[c] - row_max);
-      sum_exp += softmax_vals[i * C + c];
+      softmax_vals[static_cast<size_t>(i * C + c)] =
+          std::exp(row[c] - row_max);
+      sum_exp += softmax_vals[static_cast<size_t>(i * C + c)];
     }
     for (int64_t c = 0; c < C; c++) {
-      softmax_vals[i * C + c] /= sum_exp;
+      softmax_vals[static_cast<size_t>(i * C + c)] /= sum_exp;
     }
-    int64_t target = static_cast<int64_t>(targets.data<float>()[i]);
-    total_loss += -std::log(softmax_vals[i * C + target] + 1e-9f);
+    const int64_t target = static_cast<int64_t>(targets.data<float>()[i]);
+    total_loss += -std::log(softmax_vals[static_cast<size_t>(i * C + target)] +
+                            1e-9f);
   }
 
-  Tensor loss({1});
+  Tensor loss({1}, DType::Float32, logits.device());
   loss.data<float>()[0] = total_loss / static_cast<float>(batch);
 
   if (logits.requires_grad()) {
@@ -52,10 +83,10 @@ Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
       float* gl = grad_logits.data<float>();
 
       for (int64_t i = 0; i < batch; i++) {
-        int64_t target = static_cast<int64_t>(targets.data<float>()[i]);
+        const int64_t target = static_cast<int64_t>(targets.data<float>()[i]);
         for (int64_t c = 0; c < C; c++) {
-          float sm = softmax_vals[i * C + c];
-          float indicator = (c == target) ? 1.0f : 0.0f;
+          const float sm = softmax_vals[static_cast<size_t>(i * C + c)];
+          const float indicator = (c == target) ? 1.0f : 0.0f;
           gl[i * C + c] =
               upstream * (sm - indicator) / static_cast<float>(batch);
         }

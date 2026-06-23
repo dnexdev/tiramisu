@@ -7,7 +7,7 @@ namespace tiramisu::nn {
 
 class FeedForward : public Module {
  public:
-  explicit FeedForward(int64_t d_model);
+  explicit FeedForward(int64_t d_model, Device device = Device::CPU);
 
   Tensor forward(const Tensor& x) override;
   std::vector<Tensor*> parameters() override;

@@ -52,6 +52,7 @@ class Tensor {
   // Copies into a fresh contiguous tensor only if not already
   // contiguous; otherwise returns *this.
   Tensor contiguous() const;
+  Tensor to(Device device) const;
 
   Tensor slice(int64_t dim, int64_t start, int64_t end) const;
 

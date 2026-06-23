@@ -10,7 +10,8 @@ namespace tiramisu::nn {
 
 class MultiHeadAttention : public Module {
  public:
-  MultiHeadAttention(int64_t d_model, int64_t num_heads, bool causal = true);
+  MultiHeadAttention(int64_t d_model, int64_t num_heads, bool causal = true,
+                     Device device = Device::CPU);
 
   Tensor forward(const Tensor& x) override;
   std::vector<Tensor*> parameters() override;

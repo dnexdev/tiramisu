@@ -9,7 +9,8 @@ namespace tiramisu::nn {
 
 class TransformerBlock : public Module {
  public:
-  TransformerBlock(int64_t d_model, int64_t num_heads);
+  TransformerBlock(int64_t d_model, int64_t num_heads,
+                   Device device = Device::CPU);
 
   Tensor forward(const Tensor& x) override;
   std::vector<Tensor*> parameters() override;

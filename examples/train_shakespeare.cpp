@@ -1,4 +1,5 @@
 #include <cmath>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -10,6 +11,8 @@
 
 #include "tiramisu/autograd/grad_mode.hpp"
 #include "tiramisu/autograd/ops.hpp"
+#include "tiramisu/core/cuda_common.hpp"
+#include "tiramisu/core/cuda_memory.hpp"
 #include "tiramisu/core/tensor.hpp"
 #include "tiramisu/nn/gpt.hpp"
 #include "tiramisu/nn/loss.hpp"
@@ -78,6 +81,7 @@ struct TrainConfig {
   int sample_chars = 400;
   float temperature = 0.8f;
   int sample_seed = 42;
+  bool use_cuda = false;
 };
 
 std::string read_file(const std::string& path) {
@@ -102,6 +106,16 @@ GPTConfig gpt_config_for_preset(const std::string& preset, int64_t vocab_size,
         .tie_weights = true,
     };
   }
+  if (preset == "2m") {
+    return GPTConfig{
+        .vocab_size = vocab_size,
+        .d_model = 200,
+        .num_heads = 4,
+        .num_layers = 4,
+        .max_seq_len = seq_len,
+        .tie_weights = true,
+    };
+  }
   return GPTConfig{
       .vocab_size = vocab_size,
       .d_model = 64,
@@ -114,31 +128,49 @@ GPTConfig gpt_config_for_preset(const std::string& preset, int64_t vocab_size,
 
 void init_parameters(std::vector<Tensor*>& params, std::mt19937& gen) {
   for (Tensor* p : params) {
+    std::vector<float> host(static_cast<size_t>(p->numel()));
     if (p->shape().size() == 2) {
-      int64_t fan_in = p->shape()[0];
+      const int64_t fan_in = p->shape()[0];
       std::normal_distribution<float> dist(
           0.0f, 0.02f / std::sqrt(static_cast<float>(fan_in)));
-      float* d = p->data<float>();
-      for (int64_t i = 0; i < p->numel(); ++i) {
-        d[i] = dist(gen);
+      for (float& v : host) {
+        v = dist(gen);
       }
     } else if (p->shape().size() == 1) {
-      std::fill_n(p->data<float>(), p->numel(), 0.0f);
+      std::fill(host.begin(), host.end(), 0.0f);
+    }
+    if (p->device() == Device::CPU) {
+      std::copy(host.begin(), host.end(), p->data<float>());
+    } else {
+      cuda_mem::copy_bytes(host.data(), p->data<float>(),
+                           host.size() * sizeof(float), Device::CPU,
+                           p->device());
     }
   }
 }
 
 Tensor make_batch_tensor(const std::vector<int64_t>& flat_ids, int64_t batch,
-                         int64_t seq) {
-  Tensor t({batch, seq});
+                         int64_t seq, Device device) {
+  std::vector<float> host(static_cast<size_t>(batch * seq));
   for (int64_t i = 0; i < batch * seq; ++i) {
-    t.data<float>()[i] = static_cast<float>(flat_ids[static_cast<size_t>(i)]);
+    host[static_cast<size_t>(i)] =
+        static_cast<float>(flat_ids[static_cast<size_t>(i)]);
   }
+  Tensor t({batch, seq}, DType::Float32, device);
+  cuda_mem::copy_bytes(host.data(), t.data<float>(), host.size() * sizeof(float),
+                       Device::CPU, device);
   return t;
 }
 
+float tensor_scalar(const Tensor& t) {
+  if (t.device() == Device::CUDA) {
+    return cuda_mem::read_scalar_f32(t);
+  }
+  return t.data<float>()[0];
+}
+
 float evaluate_loss(GPT& model, const std::vector<int64_t>& ids, int64_t seq_len,
-                    int64_t batch_size) {
+                    int64_t batch_size, Device device) {
   const int64_t vocab = model.config().vocab_size;
   float total = 0.0f;
   int64_t batches = 0;
@@ -164,15 +196,15 @@ float evaluate_loss(GPT& model, const std::vector<int64_t>& ids, int64_t seq_len
     if (input_ids.empty()) break;
     const int64_t actual_batch = static_cast<int64_t>(input_ids.size()) / seq_len;
 
-    Tensor batch_x = make_batch_tensor(input_ids, actual_batch, seq_len);
-    Tensor batch_y = make_batch_tensor(target_ids, actual_batch, seq_len);
+    Tensor batch_x = make_batch_tensor(input_ids, actual_batch, seq_len, device);
+    Tensor batch_y = make_batch_tensor(target_ids, actual_batch, seq_len, device);
 
     Tensor logits = model.forward(batch_x);
     Tensor flat_logits =
         reshape(logits, {actual_batch * seq_len, vocab});
     Tensor flat_targets = batch_y.reshape({actual_batch * seq_len});
     Tensor loss = cross_entropy_loss(flat_logits, flat_targets);
-    total += loss.data<float>()[0];
+    total += tensor_scalar(loss);
     batches++;
   }
 
@@ -220,21 +252,32 @@ int64_t sample_next_token(const float* logits, int64_t vocab, float temperature,
 
 std::string generate_text(GPT& model, const CharVocab& vocab,
                           const std::string& prompt, int64_t max_new_tokens,
-                          float temperature, std::mt19937& rng) {
+                          float temperature, std::mt19937& rng,
+                          Device device) {
   NoGradGuard guard;
   std::vector<int64_t> context = vocab.encode(prompt);
   const size_t prompt_len = context.size();
 
   for (int64_t t = 0; t < max_new_tokens; ++t) {
     Tensor ids =
-        make_batch_tensor(context, 1, static_cast<int64_t>(context.size()));
+        make_batch_tensor(context, 1, static_cast<int64_t>(context.size()), device);
     Tensor logits = model.forward(ids);
     const int64_t vocab_size = model.config().vocab_size;
     const int64_t last = logits.shape()[1] - 1;
-    const float* row = logits.data<float>() + last * vocab_size;
+
+    std::vector<float> row(static_cast<size_t>(vocab_size));
+    if (device == Device::CUDA) {
+      cuda_mem::copy_bytes(
+          logits.data<float>() + last * vocab_size, row.data(),
+          static_cast<std::size_t>(vocab_size) * sizeof(float), Device::CUDA,
+          Device::CPU);
+    } else {
+      std::copy_n(logits.data<float>() + last * vocab_size, vocab_size,
+                  row.data());
+    }
 
     const int64_t next_id =
-        sample_next_token(row, vocab_size, temperature, rng);
+        sample_next_token(row.data(), vocab_size, temperature, rng);
     context.push_back(next_id);
     if (context.size() > static_cast<size_t>(model.config().max_seq_len)) {
       context.erase(context.begin());
@@ -284,11 +327,13 @@ TrainConfig parse_args(int argc, char** argv) {
       cfg.temperature = std::stof(next());
     } else if (arg == "--sample-seed") {
       cfg.sample_seed = std::stoi(next());
+    } else if (arg == "--cuda") {
+      cfg.use_cuda = true;
     } else if (arg == "--help") {
       std::printf(
           "Usage: train_shakespeare [options]\n"
           "  --data PATH          Corpus file (default: data/tiny_shakespeare.txt)\n"
-          "  --preset tiny|10m    Model size preset (default: tiny)\n"
+          "  --preset tiny|2m|10m Model size preset (default: tiny)\n"
           "  --epochs N           Training epochs (default: 3)\n"
           "  --batch-size N       Batch size (default: 8)\n"
           "  --seq-len N          Sequence length (default: 64, use 256 for 10m)\n"
@@ -300,7 +345,8 @@ TrainConfig parse_args(int argc, char** argv) {
           "  --prompt TEXT        Generation prompt (default: \"First Citizen:\\n\")\n"
           "  --sample-chars N     Characters to generate (default: 400)\n"
           "  --temperature F      Sampling temperature, 0=greedy (default: 0.8)\n"
-          "  --sample-seed N      RNG seed for sampling (default: 42)\n");
+          "  --sample-seed N      RNG seed for sampling (default: 42)\n"
+          "  --cuda               Train on GPU (requires CUDA build)\n");
       std::exit(0);
     }
   }
@@ -309,11 +355,28 @@ TrainConfig parse_args(int argc, char** argv) {
     cfg.batch_size = 16;
     cfg.epochs = 5;
   }
+  if (cfg.preset == "2m" && cfg.seq_len == 64) {
+    cfg.seq_len = 128;
+    cfg.batch_size = 16;
+  }
   return cfg;
 }
 
 int main(int argc, char** argv) {
   const TrainConfig cfg = parse_args(argc, argv);
+
+  Device device = Device::CPU;
+  if (cfg.use_cuda) {
+#ifdef TIRAMISU_CUDA_ENABLED
+    if (!cuda_available()) {
+      throw std::runtime_error("--cuda requested but no CUDA device is available");
+    }
+    set_device(Device::CUDA);
+    device = Device::CUDA;
+#else
+    throw std::runtime_error("--cuda requested but tiramisu was built without CUDA");
+#endif
+  }
 
   const std::string text = read_file(cfg.data_path);
   CharVocab vocab;
@@ -326,7 +389,7 @@ int main(int argc, char** argv) {
 
   GPTConfig model_cfg =
       gpt_config_for_preset(cfg.preset, vocab.size(), cfg.seq_len);
-  GPT model(model_cfg);
+  GPT model(gpt_config_for_preset(cfg.preset, vocab.size(), cfg.seq_len), device);
   std::vector<Tensor*> params = model.parameters();
   std::mt19937 gen(1234);
   init_parameters(params, gen);
@@ -353,8 +416,9 @@ int main(int argc, char** argv) {
   const int64_t total_steps = steps_per_epoch * cfg.epochs;
   CosineAnnealingLR scheduler(cfg.lr, total_steps, cfg.lr * 0.1f);
 
-  std::printf("Preset: %s | vocab=%lld d_model=%lld layers=%lld heads=%lld\n",
-              cfg.preset.c_str(), static_cast<long long>(model_cfg.vocab_size),
+  std::printf("Preset: %s | device=%s | vocab=%lld d_model=%lld layers=%lld heads=%lld\n",
+              cfg.preset.c_str(), device == Device::CUDA ? "cuda" : "cpu",
+              static_cast<long long>(model_cfg.vocab_size),
               static_cast<long long>(model_cfg.d_model),
               static_cast<long long>(model_cfg.num_layers),
               static_cast<long long>(model_cfg.num_heads));
@@ -394,8 +458,10 @@ int main(int argc, char** argv) {
 
       const int64_t actual_batch =
           static_cast<int64_t>(input_ids.size()) / cfg.seq_len;
-      Tensor batch_x = make_batch_tensor(input_ids, actual_batch, cfg.seq_len);
-      Tensor batch_y = make_batch_tensor(target_ids, actual_batch, cfg.seq_len);
+      Tensor batch_x =
+          make_batch_tensor(input_ids, actual_batch, cfg.seq_len, device);
+      Tensor batch_y =
+          make_batch_tensor(target_ids, actual_batch, cfg.seq_len, device);
 
       optimizer.zero_grad();
       Tensor logits = model.forward(batch_x);
@@ -412,14 +478,15 @@ int main(int argc, char** argv) {
       const float lr = scheduler.step();
       optimizer.set_lr(lr);
 
-      epoch_loss += loss.data<float>()[0];
+      epoch_loss += tensor_scalar(loss);
       batch_count++;
 
       if (global_step % cfg.eval_interval == 0) {
-        const float val_loss = evaluate_loss(model, val_ids, cfg.seq_len, cfg.batch_size);
+        const float val_loss =
+            evaluate_loss(model, val_ids, cfg.seq_len, cfg.batch_size, device);
         std::printf(
             "step %lld | train_loss %.4f | val_loss %.4f | lr %.6f\n",
-            static_cast<long long>(global_step), loss.data<float>()[0], val_loss,
+            static_cast<long long>(global_step), tensor_scalar(loss), val_loss,
             lr);
       }
 
@@ -433,7 +500,7 @@ int main(int argc, char** argv) {
     const float avg_loss =
         batch_count > 0 ? epoch_loss / static_cast<float>(batch_count) : 0.0f;
     const float val_loss =
-        evaluate_loss(model, val_ids, cfg.seq_len, cfg.batch_size);
+        evaluate_loss(model, val_ids, cfg.seq_len, cfg.batch_size, device);
     std::printf("epoch %d | avg_train_loss %.4f | val_loss %.4f\n", epoch + 1,
                 avg_loss, val_loss);
 
@@ -452,7 +519,8 @@ int main(int argc, char** argv) {
   if (cfg.generate) {
     std::mt19937 sample_rng(cfg.sample_seed);
     const std::string sample = generate_text(
-        model, vocab, cfg.prompt, cfg.sample_chars, cfg.temperature, sample_rng);
+        model, vocab, cfg.prompt, cfg.sample_chars, cfg.temperature, sample_rng,
+        device);
     std::printf("\n--- sample (prompt: %s) ---\n%s\n", cfg.prompt.c_str(),
                 sample.c_str());
   }

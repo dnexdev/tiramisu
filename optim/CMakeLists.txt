@@ -10,4 +10,4 @@ target_include_directories(tiramisu_optim PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 
-target_link_libraries(tiramisu_optim PUBLIC tiramisu_core)
+target_link_libraries(tiramisu_optim PUBLIC tiramisu_core tiramisu_ops)

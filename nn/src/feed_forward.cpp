@@ -4,8 +4,9 @@
 
 namespace tiramisu::nn {
 
-FeedForward::FeedForward(int64_t d_model)
-    : fc1_(d_model, 4 * d_model), fc2_(4 * d_model, d_model) {}
+FeedForward::FeedForward(int64_t d_model, Device device)
+    : fc1_(d_model, 4 * d_model, device),
+      fc2_(4 * d_model, d_model, device) {}
 
 Tensor FeedForward::forward(const Tensor& x) {
   return fc2_.forward(tiramisu::autograd::gelu(fc1_.forward(x)));

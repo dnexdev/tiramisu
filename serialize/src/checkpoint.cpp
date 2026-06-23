@@ -4,6 +4,8 @@
 #include <fstream>
 #include <stdexcept>
 
+#include "tiramisu/core/cuda_memory.hpp"
+
 namespace tiramisu::serialize {
 
 namespace {
@@ -140,7 +142,14 @@ void save_gpt_model(const std::string& path, nn::GPT& model, int64_t step,
     entry.name = "param_" + std::to_string(i);
     entry.shape = params[i]->shape();
     entry.data.resize(params[i]->numel());
-    std::copy_n(params[i]->data<float>(), params[i]->numel(), entry.data.begin());
+    if (params[i]->device() == Device::CUDA) {
+      cuda_mem::copy_bytes(params[i]->data<float>(), entry.data.data(),
+                           entry.data.size() * sizeof(float), Device::CUDA,
+                           Device::CPU);
+    } else {
+      std::copy_n(params[i]->data<float>(), params[i]->numel(),
+                  entry.data.begin());
+    }
     ckpt.parameters.push_back(std::move(entry));
   }
 
@@ -169,8 +178,15 @@ void load_gpt_model(const std::string& path, nn::GPT& model, int64_t* step,
       throw std::runtime_error("load_gpt_model: shape mismatch for " +
                                ckpt.parameters[i].name);
     }
-    std::copy_n(ckpt.parameters[i].data.begin(), params[i]->numel(),
-                params[i]->data<float>());
+    if (params[i]->device() == Device::CUDA) {
+      cuda_mem::copy_bytes(ckpt.parameters[i].data.data(),
+                           params[i]->data<float>(),
+                           ckpt.parameters[i].data.size() * sizeof(float),
+                           Device::CPU, Device::CUDA);
+    } else {
+      std::copy_n(ckpt.parameters[i].data.begin(), params[i]->numel(),
+                  params[i]->data<float>());
+    }
   }
 
   if (step) *step = ckpt.step;

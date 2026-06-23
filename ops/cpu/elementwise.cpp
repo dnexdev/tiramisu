@@ -123,6 +123,11 @@ Tensor div(const Tensor& a, const Tensor& b) {
 }
 
 Tensor neg(const Tensor& t) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (t.device() == Device::CUDA) {
+    return cuda::neg(t);
+  }
+#endif
   return tiramisu::ops::apply_unary_op(t, [](float x) { return -x; });
 }
 Tensor exp(const Tensor& t) {

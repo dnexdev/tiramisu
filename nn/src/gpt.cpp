@@ -1,8 +1,10 @@
 #include "tiramisu/nn/gpt.hpp"
 
 #include <stdexcept>
+#include <vector>
 
 #include "tiramisu/autograd/ops.hpp"
+#include "tiramisu/core/cuda_memory.hpp"
 
 namespace tiramisu::nn {
 
@@ -13,14 +15,27 @@ void append_params(std::vector<Tensor*>& dst, Module& module) {
   dst.insert(dst.end(), params.begin(), params.end());
 }
 
+Tensor make_pos_ids(int64_t batch, int64_t seq, Device device) {
+  std::vector<float> host(static_cast<size_t>(batch * seq));
+  for (int64_t b = 0; b < batch; ++b) {
+    for (int64_t s = 0; s < seq; ++s) {
+      host[static_cast<size_t>(b * seq + s)] = static_cast<float>(s);
+    }
+  }
+  Tensor pos_ids({batch, seq}, DType::Float32, device);
+  cuda_mem::copy_bytes(host.data(), pos_ids.data<float>(),
+                       host.size() * sizeof(float), Device::CPU, device);
+  return pos_ids;
+}
+
 }  // namespace
 
-GPT::GPT(const GPTConfig& config)
+GPT::GPT(const GPTConfig& config, Device device)
     : config_(config),
-      tok_emb_(config.vocab_size, config.d_model),
-      pos_emb_(config.max_seq_len, config.d_model),
-      ln_f_(config.d_model),
-      lm_head_(config.d_model, config.vocab_size) {
+      tok_emb_(config.vocab_size, config.d_model, device),
+      pos_emb_(config.max_seq_len, config.d_model, device),
+      ln_f_(config.d_model, 1e-5f, device),
+      lm_head_(config.d_model, config.vocab_size, device) {
   if (config.d_model % config.num_heads != 0) {
     throw std::invalid_argument("GPT: d_model must be divisible by num_heads");
   }
@@ -28,7 +43,8 @@ GPT::GPT(const GPTConfig& config)
   blocks_.reserve(config.num_layers);
   for (int64_t i = 0; i < config.num_layers; ++i) {
     blocks_.push_back(
-        std::make_shared<TransformerBlock>(config.d_model, config.num_heads));
+        std::make_shared<TransformerBlock>(config.d_model, config.num_heads,
+                                           device));
   }
 }
 
@@ -39,12 +55,7 @@ Tensor GPT::forward(const Tensor& token_ids) {
     throw std::invalid_argument("GPT: sequence length exceeds max_seq_len");
   }
 
-  Tensor pos_ids({batch, seq});
-  for (int64_t b = 0; b < batch; ++b) {
-    for (int64_t s = 0; s < seq; ++s) {
-      pos_ids.at<float>({b, s}) = static_cast<float>(s);
-    }
-  }
+  Tensor pos_ids = make_pos_ids(batch, seq, token_ids.device());
 
   Tensor x =
       tiramisu::autograd::add(tok_emb_.forward(token_ids), pos_emb_.forward(pos_ids));

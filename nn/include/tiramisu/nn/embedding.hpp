@@ -7,7 +7,8 @@ namespace tiramisu::nn {
 
 class Embedding : public Module {
  public:
-  Embedding(int64_t vocab_size, int64_t d_model);
+  Embedding(int64_t vocab_size, int64_t d_model,
+            Device device = Device::CPU);
 
   Tensor forward(const Tensor& token_ids) override;
   std::vector<Tensor*> parameters() override;

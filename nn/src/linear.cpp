@@ -4,8 +4,9 @@
 
 namespace tiramisu::nn {
 
-Linear::Linear(int64_t in_features, int64_t out_features)
-    : weight_({in_features, out_features}), bias_({out_features}) {}
+Linear::Linear(int64_t in_features, int64_t out_features, Device device)
+    : weight_({in_features, out_features}, device),
+      bias_({out_features}, device) {}
 
 Tensor Linear::forward(const Tensor& x) {
   Tensor out = tiramisu::autograd::matmul(x, weight_);

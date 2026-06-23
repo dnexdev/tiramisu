@@ -5,6 +5,8 @@
 #include <numeric>
 #include <stdexcept>
 
+#include "tiramisu/core/cuda_memory.hpp"
+
 namespace tiramisu {
 
 namespace {
@@ -94,6 +96,9 @@ T* Tensor::data() {
 
 template <typename T>
 T& Tensor::at(std::initializer_list<int64_t> indices) {
+  if (device() == Device::CUDA) {
+    throw std::runtime_error("Tensor::at() is not supported for CUDA tensors");
+  }
   if (indices.size() != shape_.size()) {
     throw std::out_of_range("Rank mismatch in Tensor::at()");
   }
@@ -184,29 +189,18 @@ Tensor Tensor::contiguous() const {
   }
 
   Tensor result(shape_, dtype(), device());
+  cuda_mem::contiguous_copy(*this, result);
+  return result;
+}
 
-  std::size_t itemsize = tiramisu::dtype_size(dtype());
-  std::byte* dst = result.storage_->data();
-
-  const std::byte* src_base = storage_->data() + (offset_ * itemsize);
-
-  int64_t total_elements = numel();
-  int64_t rank = shape_.size();
-
-  for (int64_t i = 0; i < total_elements; i++) {
-    int64_t temp = i;
-    int64_t src_flat_idx = 0;
-
-    for (int d = rank - 1; d >= 0; d--) {
-      int64_t coord = temp % shape_[d];
-      src_flat_idx += coord * strides_[d];
-      temp /= shape_[d];
-    }
-
-    std::memcpy(dst + i * itemsize, src_base + src_flat_idx * itemsize,
-                itemsize);
+Tensor Tensor::to(Device device) const {
+  if (device == this->device()) {
+    return *this;
   }
-
+  Tensor result(shape_, dtype(), device);
+  cuda_mem::copy_bytes(data<float>(), result.data<float>(),
+                       static_cast<std::size_t>(numel()) * sizeof(float),
+                       this->device(), device);
   return result;
 }
 
@@ -224,18 +218,20 @@ Tensor Tensor::slice(int64_t dim, int64_t start, int64_t end) const {
 
 void Tensor::accumulate_grad(const Tensor& g) {
   Tensor c_g = g.contiguous();
+  const Device dev = c_g.device();
 
   if (!autograd_state_->grad) {
-    Tensor new_grad(c_g.shape(), c_g.dtype(), c_g.device());
-    std::copy(c_g.data<float>(), c_g.data<float>() + c_g.numel(),
-              new_grad.data<float>());
+    Tensor new_grad(c_g.shape(), c_g.dtype(), dev);
+    cuda_mem::copy_bytes(c_g.data<float>(), new_grad.data<float>(),
+                         static_cast<std::size_t>(c_g.numel()) * sizeof(float),
+                         dev, dev);
     autograd_state_->grad = std::make_shared<Tensor>(new_grad);
   } else {
-    float* current_grad_data = autograd_state_->grad->data<float>();
-    const float* new_grad_data = c_g.data<float>();
-    for (int64_t i = 0; i < autograd_state_->grad->numel(); i++) {
-      current_grad_data[i] += new_grad_data[i];
+    if (autograd_state_->grad->device() != dev) {
+      throw std::runtime_error("accumulate_grad: device mismatch");
     }
+    cuda_mem::add_f32(autograd_state_->grad->data<float>(), c_g.data<float>(),
+                      autograd_state_->grad->numel(), dev);
   }
 }
 

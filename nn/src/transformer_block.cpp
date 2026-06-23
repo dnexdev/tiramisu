@@ -4,8 +4,12 @@
 
 namespace tiramisu::nn {
 
-TransformerBlock::TransformerBlock(int64_t d_model, int64_t num_heads)
-    : ln1_(d_model), mha_(d_model, num_heads), ln2_(d_model), ffn_(d_model) {}
+TransformerBlock::TransformerBlock(int64_t d_model, int64_t num_heads,
+                                   Device device)
+    : ln1_(d_model, 1e-5f, device),
+      mha_(d_model, num_heads, true, device),
+      ln2_(d_model, 1e-5f, device),
+      ffn_(d_model, device) {}
 
 Tensor TransformerBlock::forward(const Tensor& x) {
   Tensor residual = x;

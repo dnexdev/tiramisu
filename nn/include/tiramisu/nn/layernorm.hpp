@@ -6,7 +6,8 @@ namespace tiramisu::nn {
 
 class LayerNorm : public Module {
   public:
-    explicit LayerNorm(int64_t features, float eps = 1e-5f);
+    explicit LayerNorm(int64_t features, float eps = 1e-5f,
+                       Device device = Device::CPU);
 
     Tensor forward(const Tensor& x) override;
     std::vector<Tensor*> parameters() override;

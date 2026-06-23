@@ -23,7 +23,7 @@ struct GPTConfig {
 
 class GPT : public Module {
  public:
-  explicit GPT(const GPTConfig& config);
+  explicit GPT(const GPTConfig& config, Device device = Device::CPU);
 
   Tensor forward(const Tensor& token_ids) override;
   std::vector<Tensor*> parameters() override;

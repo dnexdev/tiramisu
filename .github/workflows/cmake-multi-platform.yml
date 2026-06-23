@@ -63,3 +63,17 @@ jobs:
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest --output-on-failure
+
+  cuda-compile:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Ninja
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+    - name: Configure CUDA build
+      run: >
+        cmake -S . -B build-cuda -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DTIRAMISU_ENABLE_CUDA=ON
+    - name: Build
+      run: cmake --build build-cuda --parallel

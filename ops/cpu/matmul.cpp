@@ -91,28 +91,42 @@ std::vector<int64_t> batch_strides(const std::vector<int64_t>& shape) {
   return strides;
 }
 
-void linear_to_coords(int64_t linear, const std::vector<int64_t>& shape,
-                      std::vector<int64_t>& coords) {
-  int64_t remaining = linear;
-  for (int64_t i = static_cast<int64_t>(shape.size()) - 1; i >= 0; --i) {
-    coords[i] = remaining % shape[i];
-    remaining /= shape[i];
-  }
-}
-
-int64_t batch_offset(const std::vector<int64_t>& coords,
-                     const std::vector<int64_t>& padded_batch_shape,
-                     const std::vector<int64_t>& batch_strides) {
-  if (batch_strides.empty()) {
-    return 0;
+std::vector<int64_t> precompute_batch_offsets(
+    int64_t num_batches, const std::vector<int64_t>& batch_out,
+    const std::vector<int64_t>& padded_operand_batch,
+    const std::vector<int64_t>& operand_batch_strides) {
+  std::vector<int64_t> offsets(num_batches, 0);
+  if (operand_batch_strides.empty() || num_batches == 0) {
+    return offsets;
   }
 
-  int64_t offset = 0;
-  for (size_t i = 0; i < coords.size(); ++i) {
-    int64_t idx = padded_batch_shape[i] == 1 ? 0 : coords[i];
-    offset += idx * batch_strides[i];
+  const int64_t batch_rank = static_cast<int64_t>(batch_out.size());
+  std::vector<int64_t> coords(batch_rank, 0);
+
+  for (int64_t batch = 0; batch < num_batches; ++batch) {
+    int64_t offset = 0;
+    for (int64_t i = 0; i < batch_rank; ++i) {
+      const int64_t idx =
+          padded_operand_batch[i] == 1 ? 0 : coords[i];
+      offset += idx * operand_batch_strides[i];
+    }
+    offsets[batch] = offset;
+
+    if (batch + 1 == num_batches) {
+      break;
+    }
+
+    for (int64_t d = batch_rank - 1; d >= 0; --d) {
+      coords[d]++;
+      if (coords[d] == batch_out[d]) {
+        coords[d] = 0;
+        continue;
+      }
+      break;
+    }
   }
-  return offset;
+
+  return offsets;
 }
 
 }  // namespace
@@ -159,15 +173,14 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
   const auto padded_b = pad_batch_shape(batch_b, batch_out.size());
   const auto strides_a = batch_strides(shape_a);
   const auto strides_b = batch_strides(shape_b);
-  std::vector<int64_t> coords(batch_out.size());
+  const std::vector<int64_t> offsets_a =
+      precompute_batch_offsets(num_batches, batch_out, padded_a, strides_a);
+  const std::vector<int64_t> offsets_b =
+      precompute_batch_offsets(num_batches, batch_out, padded_b, strides_b);
 
   for (int64_t batch = 0; batch < num_batches; ++batch) {
-    linear_to_coords(batch, batch_out, coords);
-    const int64_t off_a = batch_offset(coords, padded_a, strides_a);
-    const int64_t off_b = batch_offset(coords, padded_b, strides_b);
-    const int64_t off_c = batch * matrix_numel_c;
-
-    matmul_2d_accumulate(A + off_a, B + off_b, C + off_c, M, K, N);
+    matmul_2d_accumulate(A + offsets_a[batch], B + offsets_b[batch],
+                         C + batch * matrix_numel_c, M, K, N);
   }
 
   return out;

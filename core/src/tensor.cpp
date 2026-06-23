@@ -7,6 +7,20 @@
 
 namespace tiramisu {
 
+namespace {
+
+int64_t normalize_dim(int64_t dim, int64_t rank) {
+  if (dim < 0) {
+    dim += rank;
+  }
+  if (dim < 0 || dim >= rank) {
+    throw std::out_of_range("Dimension index out of range.");
+  }
+  return dim;
+}
+
+}  // namespace
+
 std::vector<int64_t> contiguous_strides(const std::vector<int64_t>& shape) {
   std::vector<int64_t> strides(shape.size());
 
@@ -117,34 +131,33 @@ Tensor Tensor::view(std::vector<int64_t> new_shape) const {
                 offset_);
 }
 
+Tensor Tensor::reshape(std::vector<int64_t> new_shape) const {
+  return contiguous().view(std::move(new_shape));
+}
+
 Tensor Tensor::permute(std::vector<int64_t> dims) const {
   if (dims.size() != shape_.size()) {
     throw std::invalid_argument("Permute dimensions must match tensor rank.");
   }
 
-  // need to verify that dims is also actually a permutation of current
-  uint32_t seen = 0;
-  int64_t rank = shape_.size();
-  for (int64_t d : dims) {
-    if (d < 0 || d >= rank) {
-      throw std::runtime_error("Range already exists.");
-    }
-    uint32_t bit = 1u << d;
-    if (seen & bit) {
+  const int64_t rank = static_cast<int64_t>(shape_.size());
+  std::vector<int64_t> normalized(rank);
+  std::vector<bool> seen(rank, false);
+
+  for (size_t i = 0; i < dims.size(); i++) {
+    int64_t d = normalize_dim(dims[i], rank);
+    if (seen[d]) {
       throw std::runtime_error("Duplicate dimension in permute.");
     }
-    seen |= bit;
+    seen[d] = true;
+    normalized[i] = d;
   }
 
   std::vector<int64_t> new_shape(shape_.size());
   std::vector<int64_t> new_strides(strides_.size());
 
-  for (size_t i = 0; i < dims.size(); i++) {
-    int64_t d = dims[i];
-    if (d < 0 || d >= static_cast<int64_t>(shape_.size())) {
-      throw std::out_of_range("Invalid dimension in permute.");
-    }
-
+  for (size_t i = 0; i < normalized.size(); i++) {
+    int64_t d = normalized[i];
     new_shape[i] = shape_[d];
     new_strides[i] = strides_[d];
   }
@@ -154,10 +167,9 @@ Tensor Tensor::permute(std::vector<int64_t> dims) const {
 }
 
 Tensor Tensor::transpose(int64_t dim0, int64_t dim1) const {
-  int64_t rank = shape_.size();
-  if (dim0 < 0 || dim0 >= rank || dim1 < 0 || dim1 >= rank) {
-    throw std::out_of_range("Invalid dimension in transpose.");
-  }
+  int64_t rank = static_cast<int64_t>(shape_.size());
+  dim0 = normalize_dim(dim0, rank);
+  dim1 = normalize_dim(dim1, rank);
 
   std::vector<int64_t> dims(rank);
   std::iota(dims.begin(), dims.end(), 0);

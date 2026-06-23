@@ -13,6 +13,7 @@ Tensor neg(const Tensor& t);
 Tensor exp(const Tensor& t);
 Tensor log(const Tensor& t);
 Tensor relu(const Tensor& t);
+Tensor gelu(const Tensor& t);
 
 }  // namespace ops
 }  // namespace tiramisu

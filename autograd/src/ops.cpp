@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <unordered_set>
 
 #include "tiramisu/autograd/grad_mode.hpp"
@@ -68,8 +69,9 @@ Tensor mul(const Tensor& a, const Tensor& b) {
     auto node = std::make_shared<Node>();
     node->inputs = {a, b};
     node->backward_fn = [a, b](const Tensor& grad_output) {
-      return std::vector<Tensor>{tiramisu::ops::mul(grad_output, b),
-                                 tiramisu::ops::mul(grad_output, a)};
+      return std::vector<Tensor>{
+          reduce_grad_to(tiramisu::ops::mul(grad_output, b), a.shape()),
+          reduce_grad_to(tiramisu::ops::mul(grad_output, a), b.shape())};
     };
     out.set_requires_grad(true);
     out.set_grad_fn(node);
@@ -229,6 +231,45 @@ Tensor relu(const Tensor& t) {
   return out;
 }
 
+Tensor gelu(const Tensor& t) {
+  Tensor out = tiramisu::ops::gelu(t);
+  if (grad_enabled() && t.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {t};
+    Tensor t_val = t.contiguous();
+    node->backward_fn = [t_val](const Tensor& grad_output) {
+      constexpr float kSqrt2OverPi = 0.7978845608f;
+      constexpr float kCoeff = 0.044715f;
+
+      Tensor g_c = grad_output.contiguous();
+      Tensor grad_t(t_val.shape(), t_val.dtype(), t_val.device());
+
+      const float* x = t_val.data<float>();
+      const float* g = g_c.data<float>();
+      float* gx = grad_t.data<float>();
+
+      for (int64_t i = 0; i < t_val.numel(); i++) {
+        float xi = x[i];
+        float x2 = xi * xi;
+        float x3 = x2 * xi;
+        float inner = kSqrt2OverPi * (xi + kCoeff * x3);
+        float tanh_inner = std::tanh(inner);
+        float sech2 = 1.0f - tanh_inner * tanh_inner;
+        float inner_deriv = kSqrt2OverPi * (1.0f + 3.0f * kCoeff * x2);
+        float d_out_dx =
+            0.5f * (1.0f + tanh_inner) +
+            0.5f * xi * sech2 * inner_deriv;
+        gx[i] = g[i] * d_out_dx;
+      }
+
+      return std::vector<Tensor>{grad_t};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
 Tensor sum(const Tensor& t) {
   Tensor out = tiramisu::ops::sum(t);
   if (grad_enabled() && t.requires_grad()) {
@@ -266,6 +307,241 @@ Tensor mean(const Tensor& t) {
     out.set_requires_grad(true);
     out.set_grad_fn(node);
   }
+  return out;
+}
+
+namespace {
+
+std::vector<int64_t> inverse_permutation(const std::vector<int64_t>& dims,
+                                         int64_t rank) {
+  std::vector<int64_t> inv(rank);
+  for (int64_t i = 0; i < rank; ++i) {
+    int64_t d = dims[i];
+    if (d < 0) {
+      d += rank;
+    }
+    inv[d] = i;
+  }
+  return inv;
+}
+
+}  // namespace
+
+Tensor contiguous(const Tensor& x) {
+  if (x.is_contiguous()) {
+    return x;
+  }
+
+  Tensor out = x.contiguous();
+  if (grad_enabled() && x.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {x};
+    node->backward_fn = [x](const Tensor& grad_output) {
+      Tensor grad_in(x.shape());
+      std::fill_n(grad_in.data<float>(), grad_in.numel(), 0.0f);
+
+      const float* src = grad_output.data<float>();
+      float* dst = grad_in.data<float>();
+      const int64_t total_elements = x.numel();
+      const int64_t rank = static_cast<int64_t>(x.shape().size());
+
+      for (int64_t i = 0; i < total_elements; ++i) {
+        int64_t temp = i;
+        int64_t dst_flat_idx = 0;
+        for (int64_t d = rank - 1; d >= 0; --d) {
+          const int64_t coord = temp % x.shape()[d];
+          dst_flat_idx += coord * x.strides()[d];
+          temp /= x.shape()[d];
+        }
+        dst[dst_flat_idx] = src[i];
+      }
+
+      return std::vector<Tensor>{grad_in};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+  return out;
+}
+
+Tensor reshape(const Tensor& x, std::vector<int64_t> new_shape) {
+  if (!grad_enabled() || !x.requires_grad()) {
+    return x.reshape(std::move(new_shape));
+  }
+
+  Tensor src = x.is_contiguous() ? x : contiguous(x);
+  Tensor out = src.view(new_shape);
+
+  auto node = std::make_shared<Node>();
+  node->inputs = {src};
+  const std::vector<int64_t> src_shape = src.shape();
+  node->backward_fn = [src_shape](const Tensor& grad_output) {
+    return std::vector<Tensor>{grad_output.reshape(src_shape)};
+  };
+  out.set_requires_grad(true);
+  out.set_grad_fn(node);
+  return out;
+}
+
+Tensor permute(const Tensor& x, std::vector<int64_t> dims) {
+  if (!grad_enabled() || !x.requires_grad()) {
+    return x.permute(dims);
+  }
+
+  Tensor out = x.permute(dims);
+  auto node = std::make_shared<Node>();
+  node->inputs = {x};
+  const int64_t rank = static_cast<int64_t>(x.shape().size());
+  const std::vector<int64_t> inv = inverse_permutation(dims, rank);
+  node->backward_fn = [inv](const Tensor& grad_output) {
+    return std::vector<Tensor>{grad_output.permute(inv)};
+  };
+  out.set_requires_grad(true);
+  out.set_grad_fn(node);
+  return out;
+}
+
+Tensor transpose(const Tensor& x, int64_t dim0, int64_t dim1) {
+  const int64_t rank = static_cast<int64_t>(x.shape().size());
+  if (dim0 < 0) {
+    dim0 += rank;
+  }
+  if (dim1 < 0) {
+    dim1 += rank;
+  }
+
+  std::vector<int64_t> dims(rank);
+  std::iota(dims.begin(), dims.end(), 0);
+  std::swap(dims[dim0], dims[dim1]);
+  return permute(x, dims);
+}
+
+Tensor merge_heads(const Tensor& x, int64_t d_model) {
+  if (x.shape().size() != 4) {
+    throw std::invalid_argument("merge_heads: input must be 4D");
+  }
+
+  const int64_t batch = x.shape()[0];
+  const int64_t heads = x.shape()[1];
+  const int64_t seq = x.shape()[2];
+  const int64_t d_k = x.shape()[3];
+  if (heads * d_k != d_model) {
+    throw std::invalid_argument("merge_heads: heads * d_k must equal d_model");
+  }
+
+  Tensor out({batch, seq, d_model});
+  Tensor c_x = x.contiguous();
+  const float* src = c_x.data<float>();
+  float* dst = out.data<float>();
+
+  for (int64_t b = 0; b < batch; ++b) {
+    for (int64_t s = 0; s < seq; ++s) {
+      for (int64_t h = 0; h < heads; ++h) {
+        for (int64_t d = 0; d < d_k; ++d) {
+          const int64_t src_idx = ((b * heads + h) * seq + s) * d_k + d;
+          const int64_t dst_idx = (b * seq + s) * d_model + h * d_k + d;
+          dst[dst_idx] = src[src_idx];
+        }
+      }
+    }
+  }
+
+  if (grad_enabled() && x.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {x};
+    node->backward_fn = [batch, heads, seq, d_k,
+                         d_model](const Tensor& grad_output) {
+      Tensor grad_in({batch, heads, seq, d_k});
+      std::fill_n(grad_in.data<float>(), grad_in.numel(), 0.0f);
+
+      Tensor c_grad = grad_output.contiguous();
+      const float* gsrc = c_grad.data<float>();
+      float* gdst = grad_in.data<float>();
+
+      for (int64_t b = 0; b < batch; ++b) {
+        for (int64_t s = 0; s < seq; ++s) {
+          for (int64_t h = 0; h < heads; ++h) {
+            for (int64_t d = 0; d < d_k; ++d) {
+              const int64_t src_idx = (b * seq + s) * d_model + h * d_k + d;
+              const int64_t dst_idx = ((b * heads + h) * seq + s) * d_k + d;
+              gdst[dst_idx] += gsrc[src_idx];
+            }
+          }
+        }
+      }
+
+      return std::vector<Tensor>{grad_in};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+
+  return out;
+}
+
+Tensor embedding(const Tensor& weight, const Tensor& indices) {
+  if (weight.shape().size() != 2) {
+    throw std::invalid_argument("embedding: weight must be 2D");
+  }
+  if (indices.shape().size() != 2) {
+    throw std::invalid_argument("embedding: indices must be 2D");
+  }
+
+  const int64_t batch = indices.shape()[0];
+  const int64_t seq = indices.shape()[1];
+  const int64_t vocab = weight.shape()[0];
+  const int64_t dim = weight.shape()[1];
+
+  Tensor c_indices = indices.contiguous();
+  Tensor out({batch, seq, dim});
+  const float* w = weight.data<float>();
+  const float* idx = c_indices.data<float>();
+  float* o = out.data<float>();
+
+  for (int64_t b = 0; b < batch; b++) {
+    for (int64_t s = 0; s < seq; s++) {
+      const int64_t token =
+          static_cast<int64_t>(idx[b * seq + s]);
+      if (token < 0 || token >= vocab) {
+        throw std::out_of_range("embedding: token index out of range");
+      }
+      const float* row = w + token * dim;
+      float* out_row = o + (b * seq + s) * dim;
+      std::copy(row, row + dim, out_row);
+    }
+  }
+
+  if (grad_enabled() && weight.requires_grad()) {
+    auto node = std::make_shared<Node>();
+    node->inputs = {weight, indices};
+    node->backward_fn = [c_indices, batch, seq, vocab,
+                         dim](const Tensor& grad_output) {
+      Tensor grad_weight({vocab, dim});
+      std::fill_n(grad_weight.data<float>(), vocab * dim, 0.0f);
+
+      Tensor c_grad = grad_output.contiguous();
+      const float* g = c_grad.data<float>();
+      const float* index_data = c_indices.data<float>();
+      float* gw = grad_weight.data<float>();
+
+      for (int64_t b = 0; b < batch; b++) {
+        for (int64_t s = 0; s < seq; s++) {
+          const int64_t token = static_cast<int64_t>(index_data[b * seq + s]);
+          float* gw_row = gw + token * dim;
+          const float* g_row = g + (b * seq + s) * dim;
+          for (int64_t d = 0; d < dim; d++) {
+            gw_row[d] += g_row[d];
+          }
+        }
+      }
+
+      Tensor grad_indices({1});
+      return std::vector<Tensor>{grad_weight, grad_indices};
+    };
+    out.set_requires_grad(true);
+    out.set_grad_fn(node);
+  }
+
   return out;
 }
 

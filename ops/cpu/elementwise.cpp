@@ -121,5 +121,22 @@ Tensor relu(const Tensor& t) {
       t, [](float x) { return std::max(0.0f, x); });
 }
 
+namespace {
+
+constexpr float kGeluSqrt2OverPi = 0.7978845608f;
+constexpr float kGeluCoeff = 0.044715f;
+
+float gelu_forward(float x) {
+  float x3 = x * x * x;
+  float inner = kGeluSqrt2OverPi * (x + kGeluCoeff * x3);
+  return 0.5f * x * (1.0f + std::tanh(inner));
+}
+
+}  // namespace
+
+Tensor gelu(const Tensor& t) {
+  return tiramisu::ops::apply_unary_op(t, gelu_forward);
+}
+
 }  // namespace ops
 }  // namespace tiramisu

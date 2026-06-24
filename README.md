@@ -10,7 +10,7 @@ Tiramisu is a from-scratch machine learning stack in **C++20** — about **5,000
 
 - **~5,000 lines** of framework code (`core` → `ops` → `autograd` → `nn` → `optim`)
 - **Stdlib-only compute** — no Eigen, no BLAS, no PyTorch at link time
-- **PyTorch-familiar API** — `Tensor`, `requires_grad`, `backward()`, `Module`, `Linear`, `Adam`
+- **PyTorch-familiar API** — `Tensor`, `requires_grad`, `backward()`, `Module`, `Linear`, `Adam` (Python and C++)
 - **Built to teach** — explicit autograd graph, readable kernels, end-to-end MNIST
 
 Real tensors, real autograd, real training — at a scale you can read cover to cover.
@@ -33,19 +33,19 @@ What's shipped today vs what's planned. Legend: ✅ shipped · 🚧 in progress 
 | Batched matmul | ✅ | N-D GEMM with batch broadcast |
 | Transformer / GPT | ✅ | Embedding, MHA, FFN, `TransformerBlock`, GPT |
 | CUDA backend | ✅ | GPU training via `-DTIRAMISU_ENABLE_CUDA=ON` and `--cuda` |
-| Python bindings | 📋 | pybind11 wrapper |
+| Python bindings | ✅ | `pip install .` — Tensor, autograd, `nn`, `optim` |
 | Conv2d, serialize, quant | 📋 | README placeholders today |
 
 ---
 
 ## API at a glance
 
-If you know PyTorch, you already know most of tiramisu.
+If you know PyTorch, you already know most of tiramisu — in **Python** (`pip install .`) or **C++**.
 
 ### Autograd
 
 <table>
-<tr><th>PyTorch</th><th>Tiramisu</th></tr>
+<tr><th>PyTorch</th><th>Tiramisu (Python)</th><th>Tiramisu (C++)</th></tr>
 <tr><td>
 
 ```python
@@ -53,6 +53,19 @@ x = torch.tensor([2.0], requires_grad=True)
 y = x * x + 3.0 * x
 y.backward()
 print(x.grad)  # tensor([7.])
+```
+
+</td><td>
+
+```python
+import numpy as np
+import tiramisu as tr
+
+x = tr.from_numpy(np.array([2.0], dtype=np.float32))
+x.requires_grad = True
+y = tr.add(tr.mul(x, x), tr.mul(x, 3.0))
+y.backward()
+print(x.grad)  # [7.]
 ```
 
 </td><td>
@@ -76,7 +89,7 @@ autograd::backward(y);
 ### Training step
 
 <table>
-<tr><th>PyTorch</th><th>Tiramisu</th></tr>
+<tr><th>PyTorch</th><th>Tiramisu (Python)</th><th>Tiramisu (C++)</th></tr>
 <tr><td>
 
 ```python
@@ -85,6 +98,20 @@ logits = model(batch_x)
 loss = F.cross_entropy(logits, batch_y)
 loss.backward()
 optimizer.step()
+```
+
+</td><td>
+
+```python
+import tiramisu as tr
+
+opt.zero_grad()
+h = layer1.forward(batch_x)
+h = tr.relu(h)
+logits = layer2.forward(h)
+loss = tr.nn.cross_entropy_loss(logits, batch_y)
+loss.backward()
+opt.step()
 ```
 
 </td><td>
@@ -105,13 +132,22 @@ opt.step();
 ### Linear layer
 
 <table>
-<tr><th>PyTorch</th><th>Tiramisu</th></tr>
+<tr><th>PyTorch</th><th>Tiramisu (Python)</th><th>Tiramisu (C++)</th></tr>
 <tr><td>
 
 ```python
 layer = nn.Linear(784, 128)
 # y = x @ W.T + b
 y = layer(x)
+```
+
+</td><td>
+
+```python
+import tiramisu as tr
+
+layer = tr.nn.Linear(784, 128)
+out = layer.forward(x)
 ```
 
 </td><td>
@@ -127,7 +163,32 @@ y = autograd::add(out, bias);  // bias broadcasts over batch
 
 ---
 
-## Quick start
+## Quick start (Python)
+
+Requires **Python 3.10+** and a **C++20** compiler.
+
+```bash
+pip install .
+python -c "import tiramisu as tr; print(tr.nn.Linear(10, 5))"
+```
+
+Forward pass with NumPy interop:
+
+```python
+import numpy as np
+import tiramisu as tr
+
+x = tr.from_numpy(np.random.randn(2, 784).astype(np.float32))
+layer = tr.nn.Linear(784, 10)
+out = layer.forward(x)
+print(out.shape())  # [2, 10]
+```
+
+See [`examples/python/`](examples/python/) and [`python/README.md`](python/README.md) for GPT training steps and the full binding reference.
+
+---
+
+## Quick start (C++)
 
 Requires **CMake 3.20+** and a **C++20** compiler.
 
@@ -230,6 +291,7 @@ ops/cuda/   Optional CUDA kernels (-DTIRAMISU_ENABLE_CUDA=ON)
 autograd/   Differentiable wrappers, backward(), gradcheck
 nn/         Module, Linear, GPT, loss, LayerNorm, …
 optim/      SGD, Adam, AdamW, grad clipping, cosine LR
+python/     pybind11 bindings (`pip install .`)
 serialize/  GPT checkpoint save/load
 examples/   hello_tiramisu, mnist, train_shakespeare
 tests/      GoogleTest (fetched by CMake)

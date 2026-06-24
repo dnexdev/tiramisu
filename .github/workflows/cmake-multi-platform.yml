@@ -77,3 +77,19 @@ jobs:
         -DTIRAMISU_ENABLE_CUDA=ON
     - name: Build
       run: cmake --build build-cuda --parallel
+  python-bindings:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install build deps
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install package and run pytest
+      run: |
+        python -m pip install -U pip pytest numpy build
+        pip install ".[dev]"
+        pytest tests/python -v
+    - name: Build wheel
+      run: python -m build

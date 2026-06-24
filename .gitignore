@@ -11,6 +11,7 @@ compile_commands.json
 __pycache__/
 *.egg-info/
 .venv/
+.venv-ci/
 dist/
 build/
 *.whl

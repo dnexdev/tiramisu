@@ -70,6 +70,12 @@ jobs:
     - uses: actions/checkout@v4
     - name: Install Ninja
       run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+    - name: Install CUDA toolkit
+      uses: Jimver/cuda-toolkit@v0.2.35
+      with:
+        cuda: '12.6.0'
+        method: network
+        sub-packages: '["nvcc", "cudart", "cudart_dev"]'
     - name: Configure CUDA build
       run: >
         cmake -S . -B build-cuda -G Ninja

@@ -17,6 +17,13 @@ option(TIRAMISU_BUILD_PYTHON "Build pybind11 Python extension" OFF)
 option(TIRAMISU_ENABLE_SANITIZERS "Build with ASan/UBSan in Debug builds" ON)
 option(TIRAMISU_ENABLE_CUDA "Build CUDA backend (requires CUDA toolkit)" OFF)
 
+if(TIRAMISU_ENABLE_CUDA)
+  # Required when mixing .cpp and .cu in one target; 75 = GTX 1660 / Turing.
+  if(NOT CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 75 CACHE STRING "CUDA compute capabilities")
+  endif()
+endif()
+
 if (TIRAMISU_BUILD_PYTHON)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()

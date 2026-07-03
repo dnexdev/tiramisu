@@ -20,6 +20,12 @@ Tensor softmax(const Tensor& x) {
   if (x.dtype() != DType::Float32) {
     throw std::runtime_error("softmax: only Float32 supported");
   }
+  // Softmax is applied over the last dimension; a rank-0 tensor has no such
+  // dimension and would divide by zero when computing `rows`. Rank-1 input
+  // is valid (a single row of length N).
+  if (x.shape().empty()) {
+    throw std::invalid_argument("softmax: input must be at least 1D");
+  }
 
   auto shape = x.shape();
   int64_t N = shape.back();
@@ -31,6 +37,12 @@ Tensor softmax(const Tensor& x) {
   const float* src = c_x.data<float>();
   float* dst = out.data<float>();
 
+  // Numerically stable softmax: subtract the per-row max before exp so the
+  // largest exponent argument is 0. Without this, exp(row_in[i]) overflows
+  // for inputs >~ 88 (fp32 exp is finite up to log(FLT_MAX) ≈ 88.7).
+  // Standard log-sum-exp trick — see Goodfellow, Bengio, Courville
+  // "Deep Learning" §4.1. `sum_exp` is guaranteed ≥ 1 (the max-argument
+  // term evaluates to exp(0)=1), so the divide is always safe.
   for (int64_t r = 0; r < rows; r++) {
     const float* row_in = src + r * N;
     float* row_out = dst + r * N;
@@ -41,7 +53,7 @@ Tensor softmax(const Tensor& x) {
         max_val = row_in[i];
       }
     }
-    
+
     float sum_exp = 0.0f;
     for (int64_t i = 0; i < N; i++) {
       row_out[i] = std::exp(row_in[i] - max_val);
@@ -55,6 +67,14 @@ Tensor softmax(const Tensor& x) {
   return out;
 }
 
+// Layer Normalization (Ba, Kiros, Hinton 2016):
+//   https://arxiv.org/abs/1607.06450
+// For each row of shape [..., N]:
+//   µ = mean(row),   σ² = var(row)
+//   ŷ = (x − µ) / √(σ² + eps)
+//   out = γ · ŷ + β
+// Statistics are computed per-row over the last dimension; γ, β are learned
+// per-feature (shape {N}).
 Tensor layernorm(const Tensor& x, const Tensor& gamma, const Tensor& beta, float eps) {
 #ifdef TIRAMISU_CUDA_ENABLED
   if (x.device() == Device::CUDA) {

@@ -45,15 +45,20 @@ def call_binary(prompt: str, temperature: float, max_chars: int) -> str:
   if not DATA.exists():
     raise RuntimeError(f"Corpus not found at {DATA}")
 
+  # No shell involvement (subprocess with list argv), so injection via
+  # shell metacharacters is not possible. We do keep `--prompt` last so a
+  # user-supplied value that starts with `--foo` cannot be misinterpreted
+  # as a flag by getopt-style parsers in the binary — the value follows
+  # its `--prompt` flag directly with nothing after it.
   cmd = [
     str(BINARY),
     "--preset", PRESET,
     "--data", str(DATA),
     "--checkpoint", str(SHAKESPEARE_CKPT),
     "--generate-only",
-    "--prompt", prompt,
     "--sample-chars", str(max_chars),
     "--temperature", str(temperature),
+    "--prompt", prompt,
   ]
   if os.environ.get("USE_CUDA", "").lower() in ("1", "true", "yes"):
     cmd.insert(1, "--cuda")

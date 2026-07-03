@@ -148,6 +148,11 @@ Tensor relu(const Tensor& t) {
 
 namespace {
 
+// GELU with the tanh approximation used in GPT-2 (Hendrycks & Gimpel 2016,
+//   https://arxiv.org/abs/1606.08415):
+//   GELU(x) ≈ 0.5·x·(1 + tanh(√(2/π)·(x + 0.044715·x³)))
+// The exact form uses the erf function; this approximation matches within
+// ~1e-4 and is much cheaper. Backward is in autograd/src/ops.cpp.
 constexpr float kGeluSqrt2OverPi = 0.7978845608f;
 constexpr float kGeluCoeff = 0.044715f;
 

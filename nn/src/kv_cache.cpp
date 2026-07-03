@@ -10,18 +10,21 @@ namespace tiramisu::nn {
 namespace {
 
 void copy_kv_block(const Tensor& src, Tensor& dst, int64_t src_seq, int64_t dst_seq) {
-  const int64_t batch = src.shape()[0];
-  const int64_t heads = src.shape()[1];
-  const int64_t d_k = src.shape()[3];
-  Tensor src_c = src.contiguous();
-  Tensor dst_c = dst.contiguous();
-
+  // CPU-only guard runs before any work — the callers below only allocate
+  // fresh contiguous `out` tensors, so writing directly to `dst` (rather than
+  // through a `dst.contiguous()` alias that could point at a fresh Storage)
+  // is required for the memcpy to actually reach the caller's buffer.
   if (src.device() != Device::CPU || dst.device() != Device::CPU) {
     throw std::runtime_error("kv_cache: CPU-only for inference cache");
   }
 
+  const int64_t batch = src.shape()[0];
+  const int64_t heads = src.shape()[1];
+  const int64_t d_k = src.shape()[3];
+  Tensor src_c = src.contiguous();
+
   const float* src_data = src_c.data<float>();
-  float* dst_data = dst_c.data<float>();
+  float* dst_data = dst.data<float>();
   const int64_t src_stride = src.shape()[2];
   const int64_t dst_stride = dst.shape()[2];
 
@@ -44,6 +47,12 @@ void GPTKVCache::reset() {
   seq_len = 0;
 }
 
+// Append one decode-step's K/V to the running cache. We allocate a fresh
+// tensor sized (old_seq + 1) rather than growing in place — the underlying
+// Storage has fixed capacity, and downstream ops may hold views onto the
+// old cache. CPU-only for now (see copy_kv_block). Reference: the standard
+// autoregressive-decoding KV cache; see e.g. §3.2.5 of
+// https://arxiv.org/abs/1911.02150.
 Tensor kv_cache_append(const Tensor& cache, const Tensor& token_kv) {
   if (cache.shape().size() != 4 || token_kv.shape().size() != 4) {
     throw std::invalid_argument("kv_cache_append: expected 4D tensors");

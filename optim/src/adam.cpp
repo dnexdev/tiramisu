@@ -1,7 +1,19 @@
 #include "tiramisu/optim/adam.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
+#include "tiramisu/core/device.hpp"
+
+#ifdef TIRAMISU_CUDA_ENABLED
+#include "tiramisu/ops/cuda_ops.hpp"
+#endif
+
+// Adam (Kingma & Ba, 2014): https://arxiv.org/abs/1412.6980
+// Update: m ← β1·m + (1−β1)·g,   v ← β2·v + (1−β2)·g²
+//         m̂ = m / (1 − β1^t),   v̂ = v / (1 − β2^t)     (bias correction)
+//         p ← p − lr · m̂ / (√v̂ + ε)
+// The ε-outside-sqrt placement matches the paper and PyTorch's default.
 namespace tiramisu::optim {
 
 Adam::Adam(const std::vector<Tensor*>& parameters, float lr, float beta1,
@@ -13,8 +25,17 @@ Adam::Adam(const std::vector<Tensor*>& parameters, float lr, float beta1,
       eps_(eps),
       t_(0) {
   for (Tensor* p : parameters_) {
-    m_.emplace_back(p->shape());
-    v_.emplace_back(p->shape());
+    const Device dev = p->device();
+    // No CUDA kernel is wired for the plain-Adam step: reject rather than
+    // silently corrupting device memory with host-side math. Use AdamW for
+    // CUDA training, or add ops::cuda::adam_step.
+    if (dev != Device::CPU) {
+      throw std::runtime_error(
+          "Adam: CUDA parameters are not supported (use AdamW or add a CUDA "
+          "adam_step kernel).");
+    }
+    m_.emplace_back(p->shape(), DType::Float32, dev);
+    v_.emplace_back(p->shape(), DType::Float32, dev);
 
     std::fill_n(m_.back().data<float>(), m_.back().numel(), 0.0f);
     std::fill_n(v_.back().data<float>(), v_.back().numel(), 0.0f);

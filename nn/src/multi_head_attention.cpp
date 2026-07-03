@@ -20,6 +20,11 @@ Tensor split_heads(const Tensor& x, int64_t num_heads) {
       {0, 2, 1, 3});
 }
 
+// Causal (upper-triangular) attention mask. Set future positions
+// (j > i, above the diagonal) to a large negative number so softmax maps
+// them to ~0. Using −∞ would produce NaN when the mask is added to
+// finite scores (0·∞); −1e9 is finite and small enough that exp(−1e9)
+// underflows to 0.
 Tensor make_causal_mask(int64_t seq_len, Device device) {
   std::vector<float> host(static_cast<size_t>(seq_len * seq_len));
   for (int64_t i = 0; i < seq_len; i++) {
@@ -58,6 +63,13 @@ MultiHeadAttention::MultiHeadAttention(int64_t d_model, int64_t num_heads,
   }
 }
 
+// Scaled dot-product attention (Vaswani et al. 2017,
+//   "Attention Is All You Need", https://arxiv.org/abs/1706.03762):
+//   softmax( Q·Kᵀ / √d_k + mask ) · V
+// The 1/√d_k scale keeps the pre-softmax logits from growing with d_k,
+// which would otherwise push softmax into a saturated regime where
+// gradients vanish. Causal masking (below) sets future positions to a
+// large negative value; softmax then rounds them to 0.
 Tensor MultiHeadAttention::forward(const Tensor& x) {
   const int64_t seq = x.shape()[1];
   const Device device = x.device();

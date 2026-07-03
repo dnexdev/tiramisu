@@ -4,6 +4,7 @@
 #include <cstring>
 #include <numeric>
 #include <stdexcept>
+#include <string>
 
 #include "tiramisu/core/cuda_memory.hpp"
 
@@ -21,6 +22,30 @@ int64_t normalize_dim(int64_t dim, int64_t rank) {
   return dim;
 }
 
+// Checked multiply for shape/stride arithmetic. Overflow here is UB and
+// silently corrupts memory allocations sized from the result — a crafted
+// shape like {1<<40, 1<<40} would wrap to a small positive value and
+// under-allocate, then out-of-bounds writes follow. Uses the compiler
+// intrinsic when available (GCC / Clang / recent MSVC).
+inline int64_t checked_mul_i64(int64_t a, int64_t b, const char* ctx) {
+#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
+  int64_t result;
+  if (__builtin_mul_overflow(a, b, &result)) {
+    throw std::overflow_error(std::string("integer overflow in ") + ctx);
+  }
+  return result;
+#else
+  if (a != 0 && b != 0) {
+    const int64_t candidate = a * b;
+    if (candidate / a != b) {
+      throw std::overflow_error(std::string("integer overflow in ") + ctx);
+    }
+    return candidate;
+  }
+  return a * b;
+#endif
+}
+
 }  // namespace
 
 std::vector<int64_t> contiguous_strides(const std::vector<int64_t>& shape) {
@@ -33,7 +58,8 @@ std::vector<int64_t> contiguous_strides(const std::vector<int64_t>& shape) {
   int64_t current_stride = 1;
   for (int i = static_cast<int>(shape.size()) - 1; i >= 0; i--) {
     strides[i] = current_stride;
-    current_stride *= shape[i];
+    current_stride = checked_mul_i64(current_stride, shape[i],
+                                     "contiguous_strides");
   }
 
   return strides;
@@ -66,12 +92,12 @@ const std::vector<int64_t>& Tensor::shape() const { return shape_; }
 const std::vector<int64_t>& Tensor::strides() const { return strides_; }
 
 int64_t Tensor::numel() const {
-  // if (shape_.empty()) {
-  //   return 1;
-  // }
+  // Convention: an empty shape yields numel==1 (identity of multiplication)
+  // — matches the fold below without a special case. This is how PyTorch /
+  // NumPy treat rank-0 scalar tensors.
   int64_t count = 1;
   for (int64_t dim : shape_) {
-    count *= dim;
+    count = checked_mul_i64(count, dim, "Tensor::numel");
   }
   return count;
 }
@@ -123,7 +149,7 @@ Tensor Tensor::view(std::vector<int64_t> new_shape) const {
 
   int64_t new_numel = 1;
   for (int64_t dim : new_shape) {
-    new_numel *= dim;
+    new_numel = checked_mul_i64(new_numel, dim, "Tensor::view");
   }
 
   if (new_numel != numel()) {
@@ -219,6 +245,14 @@ Tensor Tensor::slice(int64_t dim, int64_t start, int64_t end) const {
 void Tensor::accumulate_grad(const Tensor& g) {
   Tensor c_g = g.contiguous();
   const Device dev = c_g.device();
+
+  // Parameter and its gradient must live on the same device — otherwise the
+  // add_f32 below (or a later optimizer step) would silently read/write
+  // across a host/device boundary.
+  if (dev != device()) {
+    throw std::runtime_error(
+        "accumulate_grad: gradient device does not match parameter device");
+  }
 
   if (!autograd_state_->grad) {
     Tensor new_grad(c_g.shape(), c_g.dtype(), dev);

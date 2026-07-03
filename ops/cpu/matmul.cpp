@@ -20,6 +20,12 @@ namespace tiramisu::ops {
 
 namespace {
 
+// Cache-blocked SGEMM. Tile sizes are picked to keep the inner (tm,tn,tk)
+// working set inside L1 on typical desktop CPUs.
+//   see: https://en.wikipedia.org/wiki/Loop_nest_optimization#Loop_tiling
+// The outer loop tiles the M×N×K iteration space; the innermost kernel
+// below broadcasts one A[i,k] across a row of B and accumulates into a
+// row of C, which is a standard "outer-product-of-a-row" SGEMM shape.
 constexpr int64_t TILE_M = 64;
 constexpr int64_t TILE_N = 64;
 constexpr int64_t TILE_K = 64;
@@ -31,6 +37,8 @@ void matmul_tile(const float* A, const float* B, float* C, int64_t tm,
     for (int64_t kk = 0; kk < tk; kk++) {
       float a_val = A[ii * M_stride + kk];
 #if defined(__AVX2__) && !defined(__EMSCRIPTEN__)
+      // AVX2 FMA path: broadcast A[i,k] into 8 lanes, then C[i, j:j+8] +=
+      // a_val * B[k, j:j+8] using one fused multiply-add per 8 outputs.
       __m256 a_bcast = _mm256_set1_ps(a_val);
 
       int64_t jj = 0;
@@ -104,6 +112,13 @@ std::vector<int64_t> batch_strides(const std::vector<int64_t>& shape) {
   return strides;
 }
 
+// For each output batch index (in row-major order over `batch_out`), compute
+// the byte-free element offset into `operand`. Broadcasting is folded in by
+// masking any operand batch dim of length 1 to coordinate 0
+// (numpy-style broadcasting rules:
+//  https://numpy.org/doc/stable/user/basics.broadcasting.html).
+// The final inner loop is a standard multi-index increment (like a car
+// odometer): bump the last coord, carry when it hits its bound.
 std::vector<int64_t> precompute_batch_offsets(
     int64_t num_batches, const std::vector<int64_t>& batch_out,
     const std::vector<int64_t>& padded_operand_batch,

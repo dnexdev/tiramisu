@@ -8,6 +8,12 @@
 #include "tiramisu/ops/cuda_ops.hpp"
 #endif
 
+// AdamW (Loshchilov & Hutter, 2019): https://arxiv.org/abs/1711.05101
+// Difference from Adam: weight decay is *decoupled* from the adaptive
+// step. Rather than adding wd·p to the gradient (which then gets divided
+// by √v̂ and is thus effectively scaled by 1/√v̂), we subtract wd·p
+// directly from the parameter. That prevents interaction between the
+// decay and Adam's per-parameter learning rate.
 namespace tiramisu::optim {
 
 AdamW::AdamW(const std::vector<Tensor*>& parameters, float lr, float beta1,

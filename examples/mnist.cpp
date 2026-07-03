@@ -21,6 +21,9 @@ using namespace tiramisu::optim;
 using namespace tiramisu::autograd;
 using namespace tiramisu::serialize;
 
+// MNIST IDX file format is big-endian; every desktop we care about is
+// little-endian, so we byte-swap unconditionally. Format spec:
+//   http://yann.lecun.com/exdb/mnist/  ("FILE FORMATS FOR THE MNIST DATABASE").
 uint32_t swap_endian(uint32_t val) { return __builtin_bswap32(val); }
 
 Tensor load_mnist_images(const std::string& path) {

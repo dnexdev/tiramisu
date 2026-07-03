@@ -14,6 +14,14 @@
 
 namespace tiramisu::nn {
 
+// Softmax cross-entropy loss with fused backward.
+//   forward:  L = -(1/B) · Σ_b log(softmax(logits_b)[target_b])
+//   backward: ∂L/∂logits = (softmax − one_hot(target)) / B
+// The fused form avoids the softmax layer's Jacobian entirely; see e.g.
+// Bishop, "Pattern Recognition and Machine Learning", §4.3.4.
+// Softmax is computed with the max-subtract trick (see ops::softmax) for
+// numerical stability, and a small 1e-9 is added inside log() to
+// guard against log(0) when a softmax entry underflows.
 Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
   if (logits.shape().size() != 2) {
     throw std::invalid_argument(
@@ -65,6 +73,10 @@ Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
       softmax_vals[static_cast<size_t>(i * C + c)] /= sum_exp;
     }
     const int64_t target = static_cast<int64_t>(targets.data<float>()[i]);
+    if (target < 0 || target >= C) {
+      throw std::out_of_range(
+          "cross_entropy_loss: target index out of range [0, C)");
+    }
     total_loss += -std::log(softmax_vals[static_cast<size_t>(i * C + target)] +
                             1e-9f);
   }
@@ -84,6 +96,13 @@ Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
 
       for (int64_t i = 0; i < batch; i++) {
         const int64_t target = static_cast<int64_t>(targets.data<float>()[i]);
+        // Forward already validated the range; the assert catches state
+        // corruption (e.g. targets tensor mutated between forward and
+        // backward).
+        if (target < 0 || target >= C) {
+          throw std::out_of_range(
+              "cross_entropy_loss backward: target index out of range");
+        }
         for (int64_t c = 0; c < C; c++) {
           const float sm = softmax_vals[static_cast<size_t>(i * C + c)];
           const float indicator = (c == target) ? 1.0f : 0.0f;

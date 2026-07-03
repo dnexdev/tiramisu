@@ -18,8 +18,29 @@
 #include "tiramisu/ops/cuda_ops.hpp"
 #endif
 
+// Reverse-mode autograd tape.
+//
+// Each differentiable op builds a Node with:
+//   inputs       — the tensors captured for the backward pass
+//   backward_fn  — a closure that maps grad_output → grads for each input
+// Nodes are linked implicitly: an output tensor's grad_fn points at the
+// node whose inputs may themselves have grad_fns. `backward()` DFS-walks
+// this graph from the loss tensor to build a topological order, then
+// iterates in reverse (post-order → dependency order) applying each
+// backward_fn and accumulating gradients into leaf parameters.
+//
+// Broadcasted forward ops (add, mul, sub, div) produce gradients with the
+// broadcast output shape; `reduce_grad_to` sums along the broadcast axes
+// so the accumulated grad has the same shape as the leaf tensor. This is
+// the standard chain-rule treatment of numpy-style broadcasting:
+//   ∂L/∂x = Σ over broadcast axes of ∂L/∂y.
 namespace tiramisu::autograd {
 
+// Sum `grad` over leading dimensions until its rank matches `target_shape`.
+// Broadcasted binary ops (add/mul/…) emit a grad shaped like the broadcast
+// output; the leaf input received an implicit broadcast that copied its
+// values across those leading axes, and reverse mode collapses those
+// copies by summing.
 static Tensor reduce_grad_to(const Tensor& grad,
                              const std::vector<int64_t>& target_shape) {
   if (grad.shape() == target_shape) {
@@ -88,6 +109,16 @@ Tensor mul(const Tensor& a, const Tensor& b) {
   return out;
 }
 
+// Compute gradients for every leaf tensor reachable from `loss`.
+//
+// Algorithm: reverse-mode automatic differentiation via a topologically
+// sorted tape. `build_topo` performs a DFS from `loss` in post-order (a
+// node is appended only after its inputs have been visited), so iterating
+// `topo` in reverse guarantees that when we process a node, its output
+// gradient has already been accumulated by its downstream consumers.
+// See any autograd primer, e.g. Baydin et al. 2018,
+// "Automatic Differentiation in Machine Learning: a Survey"
+// (https://arxiv.org/abs/1502.05767).
 void backward(const Tensor& loss) {
   std::vector<Tensor> topo;
   std::unordered_set<Node*> visited;
@@ -242,6 +273,12 @@ Tensor relu(const Tensor& t) {
   return out;
 }
 
+// GELU backward, tanh approximation from Hendrycks & Gimpel 2016
+//   ("Gaussian Error Linear Units", https://arxiv.org/abs/1606.08415):
+//     GELU(x) ≈ 0.5·x·(1 + tanh(√(2/π) · (x + 0.044715·x³)))
+// Let u = √(2/π)·(x + 0.044715·x³). Then
+//     dGELU/dx = 0.5·(1 + tanh(u)) + 0.5·x·sech²(u)·du/dx
+// where sech²(u) = 1 − tanh²(u) and du/dx = √(2/π)·(1 + 3·0.044715·x²).
 Tensor gelu(const Tensor& t) {
   Tensor out = tiramisu::ops::gelu(t);
   if (grad_enabled() && t.requires_grad()) {
@@ -254,6 +291,7 @@ Tensor gelu(const Tensor& t) {
         return std::vector<Tensor>{ops::cuda::gelu_backward(grad_output, t_val)};
       }
 #endif
+      // √(2/π) and the cubic coefficient from the paper.
       constexpr float kSqrt2OverPi = 0.7978845608f;
       constexpr float kCoeff = 0.044715f;
 
@@ -356,6 +394,14 @@ std::vector<int64_t> inverse_permutation(const std::vector<int64_t>& dims,
 
 }  // namespace
 
+// Materialize a contiguous copy (identity as a linear map). Backward has
+// to scatter grad_output — laid out contiguously — back into the strided
+// layout of the original input. For each contiguous element index i we
+// decode it into multi-dim coordinates via repeated mod/div (row-major
+// order), then apply the input's strides to find the destination slot.
+// This is the inverse of the "flatten via c-order strides" map used by
+// numpy: see numpy strides docs
+// (https://numpy.org/doc/stable/reference/arrays.ndarray.html#internal-memory-layout).
 Tensor contiguous(const Tensor& x) {
   if (x.is_contiguous()) {
     return x;
@@ -451,6 +497,10 @@ Tensor transpose(const Tensor& x, int64_t dim0, int64_t dim1) {
   return permute(x, dims);
 }
 
+// Merge multi-head attention output: [B, H, S, D_k] → [B, S, H·D_k].
+// Forward reshuffles the head-major layout used for per-head attention
+// back to the token-major layout that the output projection W_O expects.
+// The backward is the exact inverse gather.
 Tensor merge_heads(const Tensor& x, int64_t d_model) {
   if (x.shape().size() != 4) {
     throw std::invalid_argument("merge_heads: input must be 4D");
@@ -570,9 +620,19 @@ Tensor embedding(const Tensor& weight, const Tensor& indices) {
       const float* index_data = c_indices.data<float>();
       float* gw = grad_weight.data<float>();
 
+      // Indices are stored as float in this codebase (there is no integer
+      // tensor dtype). Truncation via static_cast silently discards any
+      // fractional part, so the caller is responsible for passing whole
+      // numbers; we do bounds-check the resulting integer against `vocab`
+      // to catch out-of-range indices before writing OOB into the gradient
+      // buffer.
       for (int64_t b = 0; b < batch; b++) {
         for (int64_t s = 0; s < seq; s++) {
           const int64_t token = static_cast<int64_t>(index_data[b * seq + s]);
+          if (token < 0 || token >= vocab) {
+            throw std::out_of_range(
+                "embedding backward: token index out of range");
+          }
           float* gw_row = gw + token * dim;
           const float* g_row = g + (b * seq + s) * dim;
           for (int64_t d = 0; d < dim; d++) {
@@ -619,6 +679,11 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
 }
 
 
+// Softmax backward.
+//   Let s = softmax(x). The Jacobian J_ij = ∂s_i/∂x_j = s_i(δ_ij − s_j).
+//   Chain rule collapses to: ∂L/∂x_i = s_i · (∂L/∂s_i − Σ_j s_j · ∂L/∂s_j).
+// The scalar `dot = Σ_j s_j · ∂L/∂s_j` is computed once per row, then the
+// per-element update `s_i · (∂L/∂s_i − dot)` is applied.
 Tensor softmax(const Tensor& x) {
   Tensor out = tiramisu::ops::softmax(x);
   if (grad_enabled() && x.requires_grad()) {
@@ -668,6 +733,21 @@ Tensor softmax(const Tensor& x) {
   return out;
 }
 
+// LayerNorm backward (Ba, Kiros, Hinton 2016,
+//   https://arxiv.org/abs/1607.06450). Forward is:
+//     µ = mean(x),  σ² = var(x),  x̂ = (x − µ)/√(σ²+ε),  y = γ·x̂ + β
+//
+// With g = ∂L/∂y, per-feature gradients are straightforward:
+//     ∂L/∂γ_i = Σ_rows g_i · x̂_i           (accumulated across rows)
+//     ∂L/∂β_i = Σ_rows g_i
+//
+// For x we need the full chain, because both µ and σ² depend on all
+// elements of the row (so x̂_j depends on every x_i). Let s = √(σ²+ε).
+// Writing dx̂_i := g_i · γ_i,
+//   ∂L/∂σ² = Σ_i dx̂_i · (x_i − µ) · (−½·s⁻³)
+//   ∂L/∂µ  = Σ_i dx̂_i · (−1/s)
+//   ∂L/∂x_i = dx̂_i/s + ∂L/∂σ² · (2(x_i − µ)/N) + ∂L/∂µ / N
+// Numerical footgun: when σ² is close to zero, s⁻³ can overflow fp32.
 Tensor layernorm(const Tensor& x, const Tensor& gamma, const Tensor& beta,
                  float eps) {
   Tensor out = tiramisu::ops::layernorm(x, gamma, beta, eps);
@@ -696,8 +776,13 @@ Tensor layernorm(const Tensor& x, const Tensor& gamma, const Tensor& beta,
       std::fill_n(gg, N, 0.0f);
       std::fill_n(gb, N, 0.0f);
 
-      const float* x_data = x.contiguous().data<float>();
-      const float* go_data = grad_output.contiguous().data<float>();
+      // Bind contiguous() results to named locals: they may allocate fresh
+      // Storage, and a temporary would be destroyed at the end of the
+      // full-expression, leaving x_data / go_data dangling before the loop.
+      Tensor x_c = x.contiguous();
+      Tensor go_c = grad_output.contiguous();
+      const float* x_data = x_c.data<float>();
+      const float* go_data = go_c.data<float>();
       const float* gamma_data = gamma.data<float>();
       float* gx_data = grad_x.data<float>();
 

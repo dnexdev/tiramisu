@@ -3,16 +3,48 @@
 #include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
+#include <string>
 
 #include "tiramisu/core/cuda_memory.hpp"
 
+// Tiramisu GPT checkpoint format ("TIRA" v1).
+//
+//   [magic "TIRA" | 4 bytes]
+//   [version u32]
+//   [vocab_size i64][d_model i64][num_heads i64][num_layers i64][max_seq_len i64]
+//   [tie_weights u32][step i64][epoch i64]
+//   [num_params u32]
+//   repeated num_params times:
+//     [name_len u32][name bytes]
+//     [rank u32][shape[0..rank] i64...]
+//     [data_count u32][floats: data_count * f32]
+//
+// All integers are little-endian on the host that produced the file — the
+// format is *not* portable across differing endianness. Consumers on such
+// hosts must byte-swap.
 namespace tiramisu::serialize {
 
 namespace {
 
 constexpr char kMagic[4] = {'T', 'I', 'R', 'A'};
 constexpr uint32_t kVersion = 1;
+
+inline int64_t checked_mul_i64(int64_t a, int64_t b, const char* ctx) {
+#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
+  int64_t r;
+  if (__builtin_mul_overflow(a, b, &r)) {
+    throw std::overflow_error(std::string("integer overflow in ") + ctx);
+  }
+  return r;
+#else
+  if (a != 0 && b != 0 && (a * b) / a != b) {
+    throw std::overflow_error(std::string("integer overflow in ") + ctx);
+  }
+  return a * b;
+#endif
+}
 
 class ByteReader {
  public:
@@ -114,14 +146,21 @@ GPTCheckpoint parse_checkpoint(ByteReader& reader) {
     int64_t numel = 1;
     for (uint32_t d = 0; d < rank; ++d) {
       entry.shape[d] = reader.read_i64();
-      numel *= entry.shape[d];
+      numel = checked_mul_i64(numel, entry.shape[d],
+                              "parse_checkpoint: shape product");
     }
     const uint32_t count = reader.read_u32();
     if (static_cast<int64_t>(count) != numel) {
       throw std::runtime_error("load_gpt_checkpoint: tensor size mismatch");
     }
+    // count * sizeof(float) is computed in size_t; count is uint32_t so
+    // this cannot overflow on 64-bit platforms, but we assert the invariant
+    // for clarity and future-proofing against smaller size_t.
+    static_assert(sizeof(std::size_t) >= sizeof(uint32_t),
+                  "size_t must fit uint32_t counts");
     entry.data.resize(count);
-    reader.read(entry.data.data(), count * sizeof(float));
+    reader.read(entry.data.data(),
+                static_cast<std::size_t>(count) * sizeof(float));
     ckpt.parameters.push_back(std::move(entry));
   }
 

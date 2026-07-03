@@ -29,6 +29,11 @@ html, body {
   padding: 0 24px;
 }
 
+.hub-page,
+.mnist-page {
+  max-width: 920px;
+}
+
 header {
   padding: 48px 0 48px;
   border-bottom: 1px solid var(--paper-3);

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tiramisu — MNIST</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow"><a class="back-link" href="../">← examples</a> · MNIST classifier</p>
+    <h1>Draw a <em>digit</em></h1>
+    <p class="subtitle">
+      A tiny MLP trained in
+      <a href="https://github.com/dnexdev/tiramisu" target="_blank">tiramisu</a>
+      on MNIST — draw on the canvas and classify with WASM inference in the browser.
+    </p>
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-value">784→128→10</span>
+        <span class="stat-label">architecture</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">~96%</span>
+        <span class="stat-label">test accuracy</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">ReLU</span>
+        <span class="stat-label">activation</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">WASM</span>
+        <span class="stat-label">runs in browser</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="mnist-layout">
+      <div class="canvas-wrap">
+        <canvas id="draw-canvas" width="280" height="280" aria-label="Draw a digit"></canvas>
+        <p class="canvas-hint">Draw a digit (0–9) with mouse or touch</p>
+      </div>
+
+      <div class="mnist-side">
+        <div class="controls mnist-controls">
+          <div class="btn-row">
+            <button class="btn-primary" id="predict-btn">Predict</button>
+            <button class="btn-ghost" id="clear-canvas-btn">Clear</button>
+          </div>
+        </div>
+
+        <div class="prediction" id="prediction">
+          <span class="prediction-label">Prediction</span>
+          <span class="prediction-digit" id="prediction-digit">—</span>
+          <span class="prediction-status" id="prediction-status">ready</span>
+        </div>
+      </div>
+    </div>
+
+    <section class="network-viz" id="network-viz" hidden>
+      <h2 class="viz-title">How it decides</h2>
+      <p class="viz-subtitle">Live activations from the WASM forward pass — not a diagram of weights, but what each layer outputs for your drawing.</p>
+
+      <div class="mlp-flow" aria-hidden="true">
+        <div class="mlp-layer mlp-layer-input">
+          <span class="mlp-layer-name">Input</span>
+          <span class="mlp-layer-dim">28×28</span>
+          <span class="mlp-layer-note">flatten → 784</span>
+        </div>
+        <span class="mlp-arrow">→</span>
+        <div class="mlp-layer mlp-layer-active" id="viz-layer-linear1">
+          <span class="mlp-layer-name">Linear</span>
+          <span class="mlp-layer-dim">784 → 128</span>
+        </div>
+        <span class="mlp-arrow">→</span>
+        <div class="mlp-layer mlp-layer-active" id="viz-layer-relu">
+          <span class="mlp-layer-name">ReLU</span>
+          <span class="mlp-layer-dim">128</span>
+        </div>
+        <span class="mlp-arrow">→</span>
+        <div class="mlp-layer mlp-layer-active" id="viz-layer-linear2">
+          <span class="mlp-layer-name">Linear</span>
+          <span class="mlp-layer-dim">128 → 10</span>
+        </div>
+        <span class="mlp-arrow">→</span>
+        <div class="mlp-layer mlp-layer-output">
+          <span class="mlp-layer-name">Argmax</span>
+          <span class="mlp-layer-dim">digit</span>
+        </div>
+      </div>
+
+      <div class="viz-panel">
+        <div class="viz-panel-header">
+          <span>Hidden layer (128 ReLU outputs)</span>
+          <span class="viz-panel-hint">brighter = stronger activation</span>
+        </div>
+        <div class="hidden-strip" id="hidden-strip" aria-label="Hidden layer activations"></div>
+      </div>
+
+      <div class="viz-panel">
+        <div class="viz-panel-header">
+          <span>Output logits (pre-argmax scores)</span>
+          <span class="viz-panel-hint">tallest bar wins</span>
+        </div>
+        <div class="logits-chart" id="logits-chart" aria-label="Output logits per digit"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span class="footer-left">tiramisu — built from scratch in C++</span>
+    <div class="footer-links">
+      <a href="https://github.com/dnexdev/tiramisu" target="_blank">GitHub</a>
+      <a href="https://dnex.dev/llms1/" target="_blank">Blog</a>
+    </div>
+  </footer>
+
+</div>
+<script type="module" src="mnist.js"></script>
+</body>
+</html>

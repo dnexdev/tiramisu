@@ -35,6 +35,7 @@ add_executable(tiramisu_tests
   optim/lr_scheduler_test.cpp
   # serialize
   serialize/checkpoint_test.cpp
+  serialize/mnist_checkpoint_test.cpp
 )
 
 target_link_libraries(tiramisu_tests PRIVATE

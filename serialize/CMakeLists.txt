@@ -1,5 +1,6 @@
 add_library(tiramisu_serialize
   src/checkpoint.cpp
+  src/mnist_checkpoint.cpp
 )
 
 target_include_directories(tiramisu_serialize PUBLIC

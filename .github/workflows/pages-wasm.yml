@@ -44,20 +44,24 @@ jobs:
             -DTIRAMISU_ENABLE_CUDA=OFF \
             -DTIRAMISU_ENABLE_SANITIZERS=OFF
 
-      - name: Build WASM inference target
-        run: cmake --build build-wasm --target tiramisu_infer
+      - name: Build WASM inference targets
+        run: cmake --build build-wasm --target tiramisu_infer mnist_infer
 
       - name: Assemble static site
         run: |
-          mkdir -p site/assets
-          cp -r web/static/* site/
-          cp build-wasm/examples/tiramisu_infer.js site/
-          cp build-wasm/examples/tiramisu_infer.wasm site/
-          cp checkpoints/shakespeare_2m.ckpt site/assets/
+          mkdir -p site/shakespeare site/mnist site/shakespeare/assets site/mnist/assets
+          cp web/static/index.html web/static/style.css site/
+          cp -r web/static/shakespeare/* site/shakespeare/
+          cp -r web/static/mnist/* site/mnist/
+          cp build-wasm/examples/tiramisu_infer.js build-wasm/examples/tiramisu_infer.wasm site/shakespeare/
+          cp build-wasm/examples/mnist_infer.js build-wasm/examples/mnist_infer.wasm site/mnist/
+          cp checkpoints/shakespeare_2m.ckpt site/shakespeare/assets/
+          cp checkpoints/mnist_mlp.bin site/mnist/assets/
           touch site/.nojekyll
           chmod -R a+rX site
-          test -s site/assets/shakespeare_2m.ckpt
-          du -sh site site/assets/shakespeare_2m.ckpt
+          test -s site/shakespeare/assets/shakespeare_2m.ckpt
+          test -s site/mnist/assets/mnist_mlp.bin
+          du -sh site site/shakespeare/assets site/mnist/assets
 
       - uses: actions/configure-pages@v5
 

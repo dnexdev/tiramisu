@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tiramisu — Shakespeare</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow"><a class="back-link" href="../">← examples</a> · Shakespeare GPT</p>
+    <h1>What light through<br/><em>yonder window</em> breaks?</h1>
+    <p class="subtitle">
+      A 2 million parameter transformer, trained from scratch in a
+      <a href="https://github.com/dnexdev/tiramisu" target="_blank">hand-written C++ ML framework</a>,
+      no PyTorch, on the complete works of Shakespeare.
+    </p>
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-value">1.97M</span>
+        <span class="stat-label">parameters</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">95 epochs</span>
+        <span class="stat-label">trained</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">val 1.86</span>
+        <span class="stat-label">loss</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">WASM</span>
+        <span class="stat-label">runs in browser</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="controls">
+      <div class="field">
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" rows="3" spellcheck="false">First Citizen:
+</textarea>
+        <div class="prompts" id="prompt-chips"></div>
+      </div>
+
+      <div class="field">
+        <label>Temperature <span style="color:var(--ink-dim);font-size:11px;font-weight:400;letter-spacing:0">&mdash; lower = safer, higher = wilder</span></label>
+        <div class="slider-row">
+          <input type="range" id="temperature" min="0.1" max="1.5" step="0.05" value="0.85" />
+          <span class="slider-val" id="temp-val">0.85</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Length</label>
+        <div class="slider-row">
+          <input type="range" id="max-chars" min="50" max="800" step="50" value="150" />
+          <span class="slider-val" id="chars-val">150</span>
+        </div>
+        <p class="time-hint" id="time-hint">~3s in browser (~1s per 50 chars; longer runs slow down)</p>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-primary" id="generate-btn">Generate</button>
+        <button class="btn-ghost" id="clear-btn">Clear</button>
+      </div>
+    </div>
+
+    <div class="output-wrap">
+      <div class="output-header">
+        <span class="output-label">Output</span>
+        <span class="output-status" id="status">ready</span>
+      </div>
+      <div id="output-text" class="empty">Press generate to speak with the Bard.</div>
+    </div>
+  </main>
+
+  <footer>
+    <span class="footer-left">tiramisu — built from scratch in C++</span>
+    <div class="footer-links">
+      <a href="https://github.com/dnexdev/tiramisu" target="_blank">GitHub</a>
+      <a href="https://dnex.dev/llms1/" target="_blank">Blog</a>
+    </div>
+  </footer>
+
+</div>
+<script type="module" src="main.js"></script>
+</body>
+</html>

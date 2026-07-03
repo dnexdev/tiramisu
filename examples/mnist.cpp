@@ -1,7 +1,10 @@
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "tiramisu/autograd/ops.hpp"
@@ -10,11 +13,13 @@
 #include "tiramisu/nn/loss.hpp"
 #include "tiramisu/nn/sequential.hpp"
 #include "tiramisu/optim/adam.hpp"
+#include "tiramisu/serialize/mnist_checkpoint.hpp"
 
 using namespace tiramisu;
 using namespace tiramisu::nn;
 using namespace tiramisu::optim;
 using namespace tiramisu::autograd;
+using namespace tiramisu::serialize;
 
 uint32_t swap_endian(uint32_t val) { return __builtin_bswap32(val); }
 
@@ -75,17 +80,14 @@ void evaluate(std::shared_ptr<nn::Linear> layer1,
     Tensor batch_x = test_x.slice(0, start, end);
     Tensor batch_y = test_y.slice(0, start, end);
 
-    // Forward pass only
     Tensor h = layer1->forward(batch_x);
     h = tiramisu::autograd::relu(h);
     Tensor logits = layer2->forward(h);
 
-    // Find prediction: compare argmax(logits) with batch_y
     float* logit_data = logits.data<float>();
     float* label_data = batch_y.data<float>();
 
     for (int i = 0; i < (end - start); i++) {
-      // Find index of max logit
       int max_idx = 0;
       float max_val = logit_data[i * 10];
       for (int j = 1; j < 10; j++) {
@@ -102,48 +104,41 @@ void evaluate(std::shared_ptr<nn::Linear> layer1,
   printf("Test Accuracy: %.2f%%\n", (float)correct / num_test * 100.0f);
 }
 
-int main() {
-  Tensor train_x = load_mnist_images("../../data/train-images.idx3-ubyte");
-  Tensor train_y = load_mnist_labels("../../data/train-labels.idx1-ubyte");
+void init_layers(std::shared_ptr<nn::Linear> layer1,
+                 std::shared_ptr<nn::Linear> layer2) {
+  std::vector<Tensor*> params;
+  for (auto p : layer1->parameters()) params.push_back(p);
+  for (auto p : layer2->parameters()) params.push_back(p);
 
-  Tensor test_x = load_mnist_images("../../data/t10k-images.idx3-ubyte");
-  Tensor test_y = load_mnist_labels("../../data/t10k-labels.idx1-ubyte");
+  std::mt19937 gen(42);
+  for (Tensor* p : params) {
+    if (p->shape().size() == 2) {
+      int64_t rows = p->shape()[0];
+      int64_t cols = p->shape()[1];
+      int64_t fan_in = (rows > cols) ? cols : rows;
+      std::normal_distribution<float> dist(0.0f, std::sqrt(2.0f / fan_in));
+      float* d = p->data<float>();
+      for (int64_t i = 0; i < rows * cols; ++i) {
+        d[i] = dist(gen);
+      }
+    } else if (p->shape().size() == 1) {
+      float* d = p->data<float>();
+      for (int64_t i = 0; i < p->shape()[0]; ++i) {
+        d[i] = 0.0f;
+      }
+    }
+  }
+}
 
-  auto layer1 = std::make_shared<nn::Linear>(784, 128);
-  auto layer2 = std::make_shared<nn::Linear>(128, 10);
-
+void train(std::shared_ptr<nn::Linear> layer1, std::shared_ptr<nn::Linear> layer2,
+           const Tensor& train_x, const Tensor& train_y) {
   std::vector<Tensor*> params;
   for (auto p : layer1->parameters()) params.push_back(p);
   for (auto p : layer2->parameters()) params.push_back(p);
 
   optim::Adam opt(params, 0.001f);
-
   const int batch_size = 64;
   int num_train = train_x.shape()[0];
-
-  std::mt19937 gen(42);  // Seeded random engine
-  for (Tensor* p : params) {
-    if (p->shape().size() == 2) {  // It's a weight matrix
-      int64_t rows = p->shape()[0];
-      int64_t cols = p->shape()[1];
-
-      // Use He initialization for ReLU layers: stddev = sqrt(2 / fan_in)
-      // Adjust fan_in depending on whether shape is [out_features, in_features]
-      // or vice versa
-      int64_t fan_in = (rows > cols) ? cols : rows;
-      std::normal_distribution<float> dist(0.0f, std::sqrt(2.0f / fan_in));
-
-      float* d = p->data<float>();
-      for (int64_t i = 0; i < rows * cols; ++i) {
-        d[i] = dist(gen);
-      }
-    } else if (p->shape().size() == 1) {  // It's a bias vector
-      float* d = p->data<float>();
-      for (int64_t i = 0; i < p->shape()[0]; ++i) {
-        d[i] = 0.0f;  // Initialize biases to 0
-      }
-    }
-  }
 
   for (int epoch = 0; epoch < 10; epoch++) {
     float total_loss = 0.0f;
@@ -168,8 +163,59 @@ int main() {
     printf("Epoch %d, Avg Loss: %.4f\n", epoch,
            total_loss / (num_train / batch_size));
   }
+}
+
+struct Options {
+  std::string train_images = "data/train-images.idx3-ubyte";
+  std::string train_labels = "data/train-labels.idx1-ubyte";
+  std::string test_images = "data/t10k-images.idx3-ubyte";
+  std::string test_labels = "data/t10k-labels.idx1-ubyte";
+  std::string export_path;
+};
+
+Options parse_args(int argc, char** argv) {
+  Options opts;
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--export") == 0 && i + 1 < argc) {
+      opts.export_path = argv[++i];
+    } else if (std::strcmp(argv[i], "--train-images") == 0 && i + 1 < argc) {
+      opts.train_images = argv[++i];
+    } else if (std::strcmp(argv[i], "--train-labels") == 0 && i + 1 < argc) {
+      opts.train_labels = argv[++i];
+    } else if (std::strcmp(argv[i], "--test-images") == 0 && i + 1 < argc) {
+      opts.test_images = argv[++i];
+    } else if (std::strcmp(argv[i], "--test-labels") == 0 && i + 1 < argc) {
+      opts.test_labels = argv[++i];
+    } else if (std::strcmp(argv[i], "--help") == 0) {
+      std::printf(
+          "Usage: mnist [--export PATH] [--train-images PATH] [--train-labels PATH] "
+          "[--test-images PATH] [--test-labels PATH]\n");
+      std::exit(0);
+    }
+  }
+  return opts;
+}
+
+int main(int argc, char** argv) {
+  const Options opts = parse_args(argc, argv);
+
+  Tensor train_x = load_mnist_images(opts.train_images);
+  Tensor train_y = load_mnist_labels(opts.train_labels);
+  Tensor test_x = load_mnist_images(opts.test_images);
+  Tensor test_y = load_mnist_labels(opts.test_labels);
+
+  auto layer1 = std::make_shared<nn::Linear>(784, 128);
+  auto layer2 = std::make_shared<nn::Linear>(128, 10);
+  init_layers(layer1, layer2);
+  train(layer1, layer2, train_x, train_y);
 
   printf("Running evaluation on test set...\n");
   evaluate(layer1, layer2, test_x, test_y);
+
+  if (!opts.export_path.empty()) {
+    save_mnist_checkpoint(opts.export_path, *layer1, *layer2);
+    printf("Saved MNIST checkpoint to %s\n", opts.export_path.c_str());
+  }
+
   return 0;
 }

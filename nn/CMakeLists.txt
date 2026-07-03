@@ -6,6 +6,7 @@ add_library(tiramisu_nn
   src/module.cpp
   src/layernorm.cpp
   src/embedding.cpp
+  src/kv_cache.cpp
   src/multi_head_attention.cpp
   src/feed_forward.cpp
   src/transformer_block.cpp

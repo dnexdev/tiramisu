@@ -1,0 +1,8 @@
+build/
+.git/
+*.ckpt
+docs/
+scripts/
+tests/
+*.md
+.github/

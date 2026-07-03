@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 
+#include "tiramisu/nn/kv_cache.hpp"
 #include "tiramisu/nn/linear.hpp"
 #include "tiramisu/nn/module.hpp"
 
@@ -14,6 +15,8 @@ class MultiHeadAttention : public Module {
                      Device device = Device::CPU);
 
   Tensor forward(const Tensor& x) override;
+  Tensor forward_prefill(const Tensor& x, KVCacheLayer& cache);
+  Tensor forward_decode(const Tensor& x, KVCacheLayer& cache);
   std::vector<Tensor*> parameters() override;
 
  private:

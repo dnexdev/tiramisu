@@ -22,6 +22,28 @@ Tensor TransformerBlock::forward(const Tensor& x) {
   return h;
 }
 
+Tensor TransformerBlock::forward_prefill(const Tensor& x, KVCacheLayer& cache) {
+  Tensor residual = x;
+  Tensor h = ln1_.forward(x);
+  h = tiramisu::autograd::add(residual, mha_.forward_prefill(h, cache));
+
+  residual = h;
+  h = ln2_.forward(h);
+  h = tiramisu::autograd::add(residual, ffn_.forward(h));
+  return h;
+}
+
+Tensor TransformerBlock::forward_decode(const Tensor& x, KVCacheLayer& cache) {
+  Tensor residual = x;
+  Tensor h = ln1_.forward(x);
+  h = tiramisu::autograd::add(residual, mha_.forward_decode(h, cache));
+
+  residual = h;
+  h = ln2_.forward(h);
+  h = tiramisu::autograd::add(residual, ffn_.forward(h));
+  return h;
+}
+
 std::vector<Tensor*> TransformerBlock::parameters() {
   std::vector<Tensor*> params;
   for (Module* child :

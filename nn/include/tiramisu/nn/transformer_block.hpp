@@ -1,5 +1,6 @@
 #pragma once
 
+#include "tiramisu/nn/kv_cache.hpp"
 #include "tiramisu/nn/feed_forward.hpp"
 #include "tiramisu/nn/layernorm.hpp"
 #include "tiramisu/nn/module.hpp"
@@ -13,6 +14,8 @@ class TransformerBlock : public Module {
                    Device device = Device::CPU);
 
   Tensor forward(const Tensor& x) override;
+  Tensor forward_prefill(const Tensor& x, KVCacheLayer& cache);
+  Tensor forward_decode(const Tensor& x, KVCacheLayer& cache);
   std::vector<Tensor*> parameters() override;
 
  private:

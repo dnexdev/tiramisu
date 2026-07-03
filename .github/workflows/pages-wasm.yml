@@ -1,0 +1,62 @@
+name: Deploy WASM demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+
+      - name: Configure WASM build
+        run: |
+          emcmake cmake -S . -B build-wasm \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTIRAMISU_BUILD_WASM=ON \
+            -DTIRAMISU_BUILD_TESTS=OFF \
+            -DTIRAMISU_BUILD_EXAMPLES=ON \
+            -DTIRAMISU_BUILD_BENCH=OFF \
+            -DTIRAMISU_BUILD_PYTHON=OFF \
+            -DTIRAMISU_ENABLE_CUDA=OFF \
+            -DTIRAMISU_ENABLE_SANITIZERS=OFF
+
+      - name: Build WASM inference target
+        run: cmake --build build-wasm --target tiramisu_infer
+
+      - name: Assemble static site
+        run: |
+          mkdir -p site/assets
+          cp -r web/static/* site/
+          cp build-wasm/examples/tiramisu_infer.js site/
+          cp build-wasm/examples/tiramisu_infer.wasm site/
+          cp checkpoints/shakespeare_2m.ckpt site/assets/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

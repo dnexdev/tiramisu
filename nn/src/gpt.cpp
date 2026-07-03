@@ -73,6 +73,91 @@ Tensor GPT::forward(const Tensor& token_ids) {
   return lm_head_.forward(x);
 }
 
+Tensor GPT::logits_from_hidden(const Tensor& hidden_last) {
+  if (config_.tie_weights) {
+    Tensor tied =
+        tiramisu::autograd::transpose(tok_emb_.weight(), 0, 1);
+    return tiramisu::autograd::add(tiramisu::autograd::matmul(hidden_last, tied),
+                                   lm_head_.bias());
+  }
+  return lm_head_.forward(hidden_last);
+}
+
+Tensor GPT::embed_tokens(const Tensor& token_ids, int64_t start_pos) {
+  const int64_t batch = token_ids.shape()[0];
+  const int64_t seq = token_ids.shape()[1];
+  const Device device = token_ids.device();
+
+  std::vector<float> pos_host(static_cast<size_t>(batch * seq));
+  for (int64_t b = 0; b < batch; ++b) {
+    for (int64_t s = 0; s < seq; ++s) {
+      pos_host[static_cast<size_t>(b * seq + s)] =
+          static_cast<float>(start_pos + s);
+    }
+  }
+  Tensor pos_ids({batch, seq}, DType::Float32, device);
+  cuda_mem::copy_bytes(pos_host.data(), pos_ids.data<float>(),
+                       pos_host.size() * sizeof(float), Device::CPU, device);
+  return tiramisu::autograd::add(tok_emb_.forward(token_ids),
+                                 pos_emb_.forward(pos_ids));
+}
+
+Tensor GPT::embed_single_token(int64_t token_id, int64_t pos, Device device) {
+  Tensor ids({1, 1}, DType::Float32, device);
+  const float id_f = static_cast<float>(token_id);
+  cuda_mem::copy_bytes(&id_f, ids.data<float>(), sizeof(float), Device::CPU,
+                       device);
+
+  std::vector<float> pos_host = {static_cast<float>(pos)};
+  Tensor pos_ids({1, 1}, DType::Float32, device);
+  cuda_mem::copy_bytes(pos_host.data(), pos_ids.data<float>(),
+                       pos_host.size() * sizeof(float), Device::CPU, device);
+  return tiramisu::autograd::add(tok_emb_.forward(ids), pos_emb_.forward(pos_ids));
+}
+
+Tensor GPT::prefill(const Tensor& token_ids, GPTKVCache& cache) {
+  const int64_t seq = token_ids.shape()[1];
+  if (seq > config_.max_seq_len) {
+    throw std::invalid_argument("GPT::prefill: sequence length exceeds max_seq_len");
+  }
+  if (cache.layers.size() != static_cast<size_t>(config_.num_layers)) {
+    cache.layers.clear();
+    cache.layers.resize(static_cast<size_t>(config_.num_layers));
+  }
+
+  Tensor x = embed_tokens(token_ids, 0);
+  for (int64_t i = 0; i < config_.num_layers; ++i) {
+    x = blocks_[static_cast<size_t>(i)]->forward_prefill(x, cache.layers[static_cast<size_t>(i)]);
+  }
+  x = ln_f_.forward(x);
+  cache.seq_len = seq;
+
+  const int64_t d_model = config_.d_model;
+  Tensor flat = x.reshape({seq, d_model});
+  Tensor hidden_last = flat.slice(0, seq - 1, seq).reshape({1, 1, d_model});
+  return logits_from_hidden(hidden_last);
+}
+
+Tensor GPT::decode_step(int64_t token_id, GPTKVCache& cache) {
+  const Device device = tok_emb_.weight().device();
+  const int64_t max_seq = config_.max_seq_len;
+
+  if (cache.seq_len >= max_seq) {
+    throw std::invalid_argument(
+        "GPT::decode_step: cache full; re-prefill the context instead");
+  }
+
+  const int64_t pos = cache.seq_len;
+  Tensor x = embed_single_token(token_id, pos, device);
+  for (int64_t i = 0; i < config_.num_layers; ++i) {
+    x = blocks_[static_cast<size_t>(i)]->forward_decode(x, cache.layers[static_cast<size_t>(i)]);
+  }
+  x = ln_f_.forward(x);
+  cache.seq_len++;
+
+  return logits_from_hidden(x);
+}
+
 std::vector<Tensor*> GPT::parameters() {
   std::vector<Tensor*> params;
   append_params(params, tok_emb_);

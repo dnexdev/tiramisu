@@ -15,6 +15,7 @@
 #include "tiramisu/core/cuda_memory.hpp"
 #include "tiramisu/core/tensor.hpp"
 #include "tiramisu/nn/gpt.hpp"
+#include "tiramisu/nn/kv_cache.hpp"
 #include "tiramisu/nn/loss.hpp"
 #include "tiramisu/optim/adamw.hpp"
 #include "tiramisu/optim/grad_clip.hpp"
@@ -251,10 +252,22 @@ int64_t sample_next_token(const float* logits, int64_t vocab, float temperature,
   return vocab - 1;
 }
 
-std::string generate_text(GPT& model, const CharVocab& vocab,
-                          const std::string& prompt, int64_t max_new_tokens,
-                          float temperature, std::mt19937& rng,
-                          Device device) {
+void copy_logits_row(const Tensor& logits, std::vector<float>& row, Device device) {
+  const int64_t vocab_size = logits.shape().back();
+  row.resize(static_cast<size_t>(vocab_size));
+  if (device == Device::CUDA) {
+    cuda_mem::copy_bytes(logits.data<float>(), row.data(),
+                         static_cast<std::size_t>(vocab_size) * sizeof(float),
+                         Device::CUDA, Device::CPU);
+  } else {
+    std::copy_n(logits.data<float>(), vocab_size, row.data());
+  }
+}
+
+std::string generate_text_naive(GPT& model, const CharVocab& vocab,
+                                const std::string& prompt, int64_t max_new_tokens,
+                                float temperature, std::mt19937& rng,
+                                Device device) {
   NoGradGuard guard;
   std::vector<int64_t> context = vocab.encode(prompt);
   const size_t prompt_len = context.size();
@@ -282,6 +295,43 @@ std::string generate_text(GPT& model, const CharVocab& vocab,
     context.push_back(next_id);
     if (context.size() > static_cast<size_t>(model.config().max_seq_len)) {
       context.erase(context.begin());
+    }
+  }
+
+  std::vector<int64_t> generated(context.begin() + static_cast<long>(prompt_len),
+                                 context.end());
+  return vocab.decode(generated);
+}
+
+std::string generate_text(GPT& model, const CharVocab& vocab,
+                          const std::string& prompt, int64_t max_new_tokens,
+                          float temperature, std::mt19937& rng,
+                          Device device) {
+  NoGradGuard guard;
+  std::vector<int64_t> context = vocab.encode(prompt);
+  const size_t prompt_len = context.size();
+  const int64_t vocab_size = model.config().vocab_size;
+
+  GPTKVCache cache;
+  Tensor prompt_ids =
+      make_batch_tensor(context, 1, static_cast<int64_t>(context.size()), device);
+  Tensor logits = model.prefill(prompt_ids, cache);
+
+  std::vector<float> row;
+  for (int64_t t = 0; t < max_new_tokens; ++t) {
+    copy_logits_row(logits, row, device);
+    const int64_t next_id =
+        sample_next_token(row.data(), vocab_size, temperature, rng);
+    context.push_back(next_id);
+    if (context.size() > static_cast<size_t>(model.config().max_seq_len)) {
+      context.erase(context.begin());
+      cache.reset();
+      cache.layers.resize(static_cast<size_t>(model.config().num_layers));
+      Tensor ctx_ids = make_batch_tensor(
+          context, 1, static_cast<int64_t>(context.size()), device);
+      logits = model.prefill(ctx_ids, cache);
+    } else {
+      logits = model.decode_step(next_id, cache);
     }
   }
 

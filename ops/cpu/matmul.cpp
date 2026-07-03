@@ -1,6 +1,8 @@
 #include "tiramisu/ops/matmul.hpp"
 
+#if defined(__AVX2__) && !defined(__EMSCRIPTEN__)
 #include <immintrin.h>
+#endif
 
 #include <algorithm>
 #include <numeric>
@@ -28,6 +30,7 @@ void matmul_tile(const float* A, const float* B, float* C, int64_t tm,
   for (int64_t ii = 0; ii < tm; ii++) {
     for (int64_t kk = 0; kk < tk; kk++) {
       float a_val = A[ii * M_stride + kk];
+#if defined(__AVX2__) && !defined(__EMSCRIPTEN__)
       __m256 a_bcast = _mm256_set1_ps(a_val);
 
       int64_t jj = 0;
@@ -40,6 +43,11 @@ void matmul_tile(const float* A, const float* B, float* C, int64_t tm,
       for (; jj < tn; jj++) {
         C[ii * N_stride + jj] += a_val * B[kk * K_stride + jj];
       }
+#else
+      for (int64_t jj = 0; jj < tn; jj++) {
+        C[ii * N_stride + jj] += a_val * B[kk * K_stride + jj];
+      }
+#endif
     }
   }
 }

@@ -1,4 +1,4 @@
-find_package(OpenMP REQUIRED)
+find_package(OpenMP)
 
 set(TIRAMISU_OPS_CPU_SOURCES
   cpu/broadcast.cpp
@@ -16,11 +16,17 @@ target_include_directories(tiramisu_ops PUBLIC
 )
 
 target_link_libraries(tiramisu_ops PUBLIC tiramisu_core)
-if(OpenMP_CXX_FOUND)
+if(OpenMP_CXX_FOUND AND NOT EMSCRIPTEN)
   target_link_libraries(tiramisu_ops PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
-target_compile_options(tiramisu_ops PRIVATE -O3 -mavx2 -mfma)
+if(EMSCRIPTEN)
+  target_compile_options(tiramisu_ops PRIVATE -O3 -msimd128)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  target_compile_options(tiramisu_ops PRIVATE -O3 -mavx2 -mfma)
+else()
+  target_compile_options(tiramisu_ops PRIVATE -O3)
+endif()
 
 if(TIRAMISU_ENABLE_CUDA)
   enable_language(CUDA)

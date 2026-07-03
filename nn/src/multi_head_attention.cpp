@@ -89,6 +89,63 @@ Tensor MultiHeadAttention::forward(const Tensor& x) {
   return w_o_.forward(merged);
 }
 
+Tensor MultiHeadAttention::forward_prefill(const Tensor& x, KVCacheLayer& cache) {
+  const int64_t seq = x.shape()[1];
+  const Device device = x.device();
+
+  Tensor q = split_heads(w_q_.forward(x), num_heads_);
+  Tensor k = split_heads(w_k_.forward(x), num_heads_);
+  Tensor v = split_heads(w_v_.forward(x), num_heads_);
+  cache.k = k.contiguous();
+  cache.v = v.contiguous();
+
+  Tensor scores = tiramisu::autograd::matmul(
+      q, tiramisu::autograd::transpose(k, -2, -1));
+
+  const float scale_val =
+      1.0f / std::sqrt(static_cast<float>(d_k_));
+  Tensor scale = make_scale_tensor(scale_val, device);
+  scores = tiramisu::autograd::mul(scores, scale);
+
+  if (causal_) {
+    if (cached_mask_seq_ != seq || !cached_mask_.has_value() ||
+        cached_mask_->device() != device) {
+      cached_mask_ = make_causal_mask(seq, device);
+      cached_mask_seq_ = seq;
+    }
+    scores = tiramisu::autograd::add(scores, *cached_mask_);
+  }
+
+  Tensor weights = tiramisu::autograd::softmax(scores);
+  Tensor context = tiramisu::autograd::matmul(weights, v);
+  Tensor merged = tiramisu::autograd::merge_heads(context, d_model_);
+  return w_o_.forward(merged);
+}
+
+Tensor MultiHeadAttention::forward_decode(const Tensor& x, KVCacheLayer& cache) {
+  const Device device = x.device();
+
+  Tensor q = split_heads(w_q_.forward(x), num_heads_);
+  Tensor k_new = split_heads(w_k_.forward(x), num_heads_);
+  Tensor v_new = split_heads(w_v_.forward(x), num_heads_);
+
+  cache.k = kv_cache_append(*cache.k, k_new.contiguous());
+  cache.v = kv_cache_append(*cache.v, v_new.contiguous());
+
+  Tensor scores = tiramisu::autograd::matmul(
+      q, tiramisu::autograd::transpose(*cache.k, -2, -1));
+
+  const float scale_val =
+      1.0f / std::sqrt(static_cast<float>(d_k_));
+  Tensor scale = make_scale_tensor(scale_val, device);
+  scores = tiramisu::autograd::mul(scores, scale);
+
+  Tensor weights = tiramisu::autograd::softmax(scores);
+  Tensor context = tiramisu::autograd::matmul(weights, *cache.v);
+  Tensor merged = tiramisu::autograd::merge_heads(context, d_model_);
+  return w_o_.forward(merged);
+}
+
 std::vector<Tensor*> MultiHeadAttention::parameters() {
   std::vector<Tensor*> params;
   for (Module* layer :

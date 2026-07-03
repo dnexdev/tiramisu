@@ -16,6 +16,15 @@ option(TIRAMISU_BUILD_BENCH "Build microbenchmarks" OFF)
 option(TIRAMISU_BUILD_PYTHON "Build pybind11 Python extension" OFF)
 option(TIRAMISU_ENABLE_SANITIZERS "Build with ASan/UBSan in Debug builds" ON)
 option(TIRAMISU_ENABLE_CUDA "Build CUDA backend (requires CUDA toolkit)" OFF)
+option(TIRAMISU_BUILD_WASM "Build WebAssembly inference target (requires Emscripten)" OFF)
+
+if(TIRAMISU_BUILD_WASM)
+  set(TIRAMISU_BUILD_TESTS OFF CACHE BOOL "Build unit tests" FORCE)
+  set(TIRAMISU_BUILD_BENCH OFF CACHE BOOL "Build microbenchmarks" FORCE)
+  set(TIRAMISU_BUILD_PYTHON OFF CACHE BOOL "Build pybind11 Python extension" FORCE)
+  set(TIRAMISU_ENABLE_CUDA OFF CACHE BOOL "Build CUDA backend" FORCE)
+  set(TIRAMISU_ENABLE_SANITIZERS OFF CACHE BOOL "Build with sanitizers" FORCE)
+endif()
 
 if(TIRAMISU_ENABLE_CUDA)
   # Required when mixing .cpp and .cu in one target; 75 = GTX 1660 / Turing.

@@ -26,6 +26,7 @@ add_executable(tiramisu_tests
   nn/feed_forward_test.cpp
   nn/transformer_block_test.cpp
   nn/gpt_test.cpp
+  nn/kv_cache_test.cpp
   # optim
   optim/sgd_test.cpp
   optim/adam_test.cpp

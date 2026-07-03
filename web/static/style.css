@@ -1,0 +1,335 @@
+*, *::before, *::after {box-sizing: border-box; margin: 0; padding: 0}
+
+:root {
+  --ink: #e8e0d0;
+  --ink-dim: #7a7060;
+  --paper: #0f0e0c;
+  --paper-2:  #1a1916;
+  --paper-3: #252320;
+  --gold: #c9a84c;
+  --gold-dim:  #7a6330;
+  --radius: 4px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+header {
+  padding: 48px 0 48px;
+  border-bottom: 1px solid var(--paper-3);
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
+
+h1 {
+  font-family: 'IM Fell English', serif;
+  font-size: clamp(28px, 5vw, 44px);
+  line-height: 1.15;
+  color: var(--ink);
+  font-weight: 400;
+  margin-bottom: 16px;
+}
+
+h1 em {
+  font-style: italic;
+  color: var(--gold);
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--ink-dim);
+  max-width: 520px;
+  line-height: 1.7;
+}
+
+.subtitle a {
+  color: var(--ink-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.subtitle a:hover {color: var(--ink);}
+
+.stats {
+  display: flex;
+  gap: 32px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--gold);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--ink-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+main {padding: 40px 0; }
+
+.controls {
+  background: var(--paper-2);
+  border: 1px solid var(--paper-3);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.field {margin-bottom: 20px;}
+.field:last-child {margin-bottom: 0;}
+
+label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 8px;
+}
+
+textarea {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--paper-3);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  padding: 12px 14px;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.15s;
+  outline: none;
+}
+
+textarea:focus {border-color: var(--gold-dim);}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+input[type=range] {
+  flex: 1;
+  appearance: none;
+  height: 2px;
+  background: var(--paper-3);
+  border-radius: 1px;
+  outline: none;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  appearance:none;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background:var(--gold);
+  cursor:pointer;
+  transition: transform 0.1s;
+}
+
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+.slider-val {
+  width: 38px;
+  text-align: right;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.time-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--ink-dim);
+  letter-spacing: 0.02em;
+}
+
+.btn-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 24px;
+}
+
+button {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  padding: 11px 22px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+button:active { transform: scale(0.98); }
+
+.btn-primary {
+  background: var(--gold);
+  color: var(--paper);
+}
+
+.btn-primary:hover {opacity: 0.9;}
+.btn-primary:disabled {opacity: 0.4; cursor: not-allowed; transform:none;}
+
+btn-ghost {
+  background: transparent;
+  border: 1px solid var(--paper-3);
+  color: var(--ink-dim);
+}
+ 
+.btn-ghost:hover { border-color: var(--ink-dim); color: var(--ink); }
+ 
+.output-wrap {
+  background: var(--paper-2);
+  border: 1px solid var(--paper-3);
+  border-radius: var(--radius);
+  min-height: 200px;
+  position: relative;
+  overflow: hidden;
+}
+ 
+.output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--paper-3);
+}
+ 
+.output-label {
+  font-size: 11px;
+  color: var(--ink-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+ 
+.output-status {
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+ 
+.output-status.generating { color: var(--gold); }
+.output-status.done { color: #6a9a6a; }
+.output-status.error { color: #c06060; }
+ 
+#output-text {
+  font-family: 'IM Fell English', serif;
+  font-size: 16px;
+  line-height: 1.9;
+  color: var(--ink);
+  padding: 24px;
+  white-space: pre-wrap;
+  min-height: 160px;
+}
+ 
+#output-text.empty {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--ink-dim);
+  font-style: normal;
+}
+ 
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--gold);
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+ 
+@keyframes blink {0%, 100% {opacity: 1;} 50% {opacity: 0;}}
+ 
+footer {
+  padding: 24px 0;
+  border-top: 1px solid var(--paper-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+ 
+.footer-left {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+ 
+.footer-links {
+  display: flex;
+  gap: 20px;
+}
+ 
+.footer-links a {
+  font-size: 12px;
+  color: var(--ink-dim);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+ 
+.footer-links a:hover { color: var(--ink); }
+ 
+.prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+ 
+.prompt-chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  background: var(--paper);
+  border: 1px solid var(--paper-3);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+ 
+.prompt-chip:hover {
+  border-color: var(--gold-dim);
+  color: var(--ink);
+}
+ 
+@media (max-width: 480px) {
+  .stats { gap: 20px; }
+  .btn-row { flex-direction: column; align-items: stretch; }
+}

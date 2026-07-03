@@ -13,7 +13,8 @@ __pycache__/
 .venv/
 .venv-ci/
 dist/
-build/
+build-wasm/
+site/
 *.whl
 
 # MNIST data files

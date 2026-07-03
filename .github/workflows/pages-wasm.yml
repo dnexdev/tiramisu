@@ -10,21 +10,21 @@ permissions:
   pages: write
   id-token: write
 
-# Let in-flight deploys finish; canceling mid-deploy can leave bad state.
+# Do not cancel in-flight deploys; cancelling mid-flight can wedge Pages.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
@@ -55,24 +55,41 @@ jobs:
           cp build-wasm/examples/tiramisu_infer.wasm site/
           cp checkpoints/shakespeare_2m.ckpt site/assets/
           touch site/.nojekyll
-          echo tiramisu.dnex.dev > site/CNAME
+          chmod -R a+rX site
           test -s site/assets/shakespeare_2m.ckpt
+          du -sh site site/assets/shakespeare_2m.ckpt
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
+      # Pages deploy API is intermittently flaky (actions/deploy-pages#418).
+      - name: Deploy to GitHub Pages (attempt 1)
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Deploy to GitHub Pages (attempt 2)
+        id: deployment2
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Deploy to GitHub Pages (attempt 3)
+        id: deployment3
+        if: steps.deployment2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Verify deployment succeeded
+        if: >-
+          steps.deployment.outcome != 'success' &&
+          steps.deployment2.outcome != 'success' &&
+          steps.deployment3.outcome != 'success'
+        run: |
+          echo "::error::GitHub Pages deploy failed after 3 attempts."
+          echo "If DNS was just configured, wait a few minutes and re-run this workflow."
+          echo "Custom domain should be set only in Settings → Pages (not via a CNAME file)."
+          exit 1

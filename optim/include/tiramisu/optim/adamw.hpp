@@ -16,6 +16,8 @@ class AdamW {
   void zero_grad();
   void set_lr(float lr) { lr_ = lr; }
   float lr() const { return lr_; }
+  void set_step(int64_t t) { t_ = t; }
+  int64_t step() const { return t_; }
 
  private:
   std::vector<Tensor*> parameters_;

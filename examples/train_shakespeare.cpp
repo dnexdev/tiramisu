@@ -82,6 +82,7 @@ struct TrainConfig {
   float temperature = 0.8f;
   int sample_seed = 42;
   bool use_cuda = false;
+  bool resume = false;
 };
 
 std::string read_file(const std::string& path) {
@@ -329,6 +330,8 @@ TrainConfig parse_args(int argc, char** argv) {
       cfg.sample_seed = std::stoi(next());
     } else if (arg == "--cuda") {
       cfg.use_cuda = true;
+    } else if (arg == "--resume") {
+      cfg.resume = true;
     } else if (arg == "--help") {
       std::printf(
           "Usage: train_shakespeare [options]\n"
@@ -339,6 +342,7 @@ TrainConfig parse_args(int argc, char** argv) {
           "  --seq-len N          Sequence length (default: 64, use 256 for 10m)\n"
           "  --lr F               Base learning rate (default: 3e-4)\n"
           "  --checkpoint PATH    Save/load checkpoint path\n"
+          "  --resume             With --checkpoint: train N more epochs (see --epochs)\n"
           "  --max-batches N      Stop after N optimizer steps\n"
           "  --no-generate        Skip sampling after training\n"
           "  --generate-only      Load checkpoint and sample (implies --epochs 0)\n"
@@ -392,28 +396,70 @@ int main(int argc, char** argv) {
   GPT model(gpt_config_for_preset(cfg.preset, vocab.size(), cfg.seq_len), device);
   std::vector<Tensor*> params = model.parameters();
   std::mt19937 gen(1234);
-  init_parameters(params, gen);
 
   int64_t resume_step = 0;
   int64_t resume_epoch = 0;
+  bool loaded_checkpoint = false;
   if (!cfg.checkpoint_path.empty()) {
     std::ifstream ck(cfg.checkpoint_path);
     if (ck.good()) {
       serialize::load_gpt_model(cfg.checkpoint_path, model, &resume_step,
                                 &resume_epoch);
+      loaded_checkpoint = true;
       std::printf("Loaded checkpoint from %s (step %lld, epoch %lld)\n",
                   cfg.checkpoint_path.c_str(),
                   static_cast<long long>(resume_step),
                   static_cast<long long>(resume_epoch));
+    } else if (cfg.resume) {
+      throw std::runtime_error("--resume: checkpoint not found: " +
+                               cfg.checkpoint_path);
     }
+  } else if (cfg.resume) {
+    throw std::runtime_error("--resume requires --checkpoint PATH");
+  }
+
+  if (!loaded_checkpoint) {
+    init_parameters(params, gen);
   }
 
   AdamW optimizer(params, cfg.lr, 0.9f, 0.999f, 1e-8f, cfg.weight_decay);
+  if (loaded_checkpoint) {
+    optimizer.set_step(resume_step);
+  }
 
   const int64_t steps_per_epoch =
       std::max<int64_t>(1, static_cast<int64_t>(train_ids.size()) /
                                (cfg.batch_size * cfg.seq_len));
-  const int64_t total_steps = steps_per_epoch * cfg.epochs;
+
+  int64_t start_epoch = 0;
+  int64_t target_epoch = cfg.epochs;
+  int64_t train_epochs = cfg.epochs;
+  if (cfg.resume) {
+    if (!loaded_checkpoint) {
+      throw std::runtime_error("--resume: no checkpoint was loaded");
+    }
+    start_epoch = resume_epoch;
+    target_epoch = resume_epoch + cfg.epochs;
+    train_epochs = cfg.epochs;
+    std::printf(
+        "Resuming: %lld more epochs (epoch %lld -> %lld), from step %lld\n",
+        static_cast<long long>(train_epochs),
+        static_cast<long long>(start_epoch),
+        static_cast<long long>(target_epoch),
+        static_cast<long long>(resume_step));
+  } else if (loaded_checkpoint) {
+    start_epoch = resume_epoch;
+    target_epoch = cfg.epochs;
+    if (start_epoch >= target_epoch) {
+      std::printf(
+          "Checkpoint already at epoch %lld (>= --epochs %lld); skipping "
+          "training. Use --resume --epochs N for more epochs.\n",
+          static_cast<long long>(resume_epoch),
+          static_cast<long long>(cfg.epochs));
+    }
+  }
+
+  const int64_t total_steps = steps_per_epoch * train_epochs;
   CosineAnnealingLR scheduler(cfg.lr, total_steps, cfg.lr * 0.1f);
 
   std::printf("Preset: %s | device=%s | vocab=%lld d_model=%lld layers=%lld heads=%lld\n",
@@ -427,8 +473,8 @@ int main(int argc, char** argv) {
               val_ids.size());
 
   int64_t global_step = resume_step;
-  if (!cfg.generate_only) {
-  for (int epoch = resume_epoch; epoch < cfg.epochs; ++epoch) {
+  if (!cfg.generate_only && start_epoch < target_epoch) {
+  for (int epoch = start_epoch; epoch < target_epoch; ++epoch) {
     float epoch_loss = 0.0f;
     int64_t batch_count = 0;
 
@@ -510,9 +556,10 @@ int main(int argc, char** argv) {
   }
   }
 
-  if (!cfg.generate_only && !cfg.checkpoint_path.empty()) {
+  if (!cfg.generate_only && !cfg.checkpoint_path.empty() &&
+      start_epoch < target_epoch) {
     serialize::save_gpt_model(cfg.checkpoint_path, model, global_step,
-                              cfg.epochs);
+                              target_epoch);
     std::printf("Final checkpoint saved to %s\n", cfg.checkpoint_path.c_str());
   }
 

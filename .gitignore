@@ -22,4 +22,6 @@ build/
 examples/train-images-idx3-ubyte/
 examples/train-labels-idx1-ubyte/
 
-tiny_shakespeare.txt
+data/tiny_shakespeare.txt
+data/shakespeare_2m_train.csv
+data/shakespeare_2m_train.log

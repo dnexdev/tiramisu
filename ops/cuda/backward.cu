@@ -414,6 +414,68 @@ void zero_grad(float* grad, int64_t n) {
       cudaMemset(grad, 0, static_cast<size_t>(n) * sizeof(float)));
 }
 
+__global__ void sum_sq_kernel(const float* in, double* out, int64_t n) {
+  const int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) {
+    const float v = in[i];
+    atomicAdd(out, static_cast<double>(v) * static_cast<double>(v));
+  }
+}
+
+__global__ void scale_kernel(float* in, int64_t n, float scale) {
+  const int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) {
+    in[i] *= scale;
+  }
+}
+
+float clip_grad_norm(const std::vector<Tensor*>& parameters, float max_norm) {
+  double* d_sum = nullptr;
+  TIRAMISU_CUDA_CHECK(cudaMalloc(&d_sum, sizeof(double)));
+  TIRAMISU_CUDA_CHECK(cudaMemset(d_sum, 0, sizeof(double)));
+
+  const int block = 256;
+  for (Tensor* p : parameters) {
+    if (!p->grad()) {
+      continue;
+    }
+    const float* g = p->grad()->data<float>();
+    const int64_t n = p->grad()->numel();
+    if (n == 0) {
+      continue;
+    }
+    const int grid = static_cast<int>((n + block - 1) / block);
+    sum_sq_kernel<<<grid, block>>>(g, d_sum, n);
+  }
+  TIRAMISU_CUDA_CHECK(cudaGetLastError());
+
+  double host_sum = 0.0;
+  TIRAMISU_CUDA_CHECK(
+      cudaMemcpy(&host_sum, d_sum, sizeof(double), cudaMemcpyDeviceToHost));
+  cudaFree(d_sum);
+
+  const float total_norm = static_cast<float>(std::sqrt(host_sum));
+  if (total_norm <= max_norm || total_norm == 0.0f) {
+    return total_norm;
+  }
+
+  const float scale = max_norm / total_norm;
+  for (Tensor* p : parameters) {
+    if (!p->grad()) {
+      continue;
+    }
+    float* g = p->grad()->data<float>();
+    const int64_t n = p->grad()->numel();
+    if (n == 0) {
+      continue;
+    }
+    const int grid = static_cast<int>((n + block - 1) / block);
+    scale_kernel<<<grid, block>>>(g, n, scale);
+  }
+  TIRAMISU_CUDA_CHECK(cudaGetLastError());
+  return total_norm;
+}
+
 }  // namespace tiramisu::ops::cuda
 
 #endif  // TIRAMISU_CUDA_ENABLED

@@ -2,9 +2,23 @@
 
 #include <cmath>
 
+#include "tiramisu/core/device.hpp"
+
+#ifdef TIRAMISU_CUDA_ENABLED
+#include "tiramisu/ops/cuda_ops.hpp"
+#endif
+
 namespace tiramisu::optim {
 
 float clip_grad_norm(std::vector<Tensor*>& parameters, float max_norm) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  for (Tensor* p : parameters) {
+    if (p->grad() && p->grad()->device() == Device::CUDA) {
+      return ops::cuda::clip_grad_norm(parameters, max_norm);
+    }
+  }
+#endif
+
   double total_norm_sq = 0.0;
   for (Tensor* p : parameters) {
     if (!p->grad()) continue;

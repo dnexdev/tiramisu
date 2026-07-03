@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "tiramisu/core/tensor.hpp"
 
 namespace tiramisu::ops::cuda {
@@ -41,5 +43,6 @@ void adamw_step(float* param, const float* grad, float* m, float* v, int64_t n,
                 float lr, float beta1, float beta2, float eps,
                 float weight_decay, int64_t t);
 void zero_grad(float* grad, int64_t n);
+float clip_grad_norm(const std::vector<Tensor*>& parameters, float max_norm);
 
 }  // namespace tiramisu::ops::cuda

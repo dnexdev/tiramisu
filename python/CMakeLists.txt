@@ -15,6 +15,7 @@ target_link_libraries(_C PRIVATE
   tiramisu_autograd
   tiramisu_nn
   tiramisu_optim
+  tiramisu_serialize
 )
 
 if(NOT MSVC)

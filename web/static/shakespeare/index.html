@@ -15,25 +15,26 @@
     <p class="eyebrow"><a class="back-link" href="../">← examples</a> · Shakespeare GPT</p>
     <h1>What light through<br/><em>yonder window</em> breaks?</h1>
     <p class="subtitle">
-      A 2 million parameter transformer, trained from scratch in a
+      A 10 million parameter transformer, trained from scratch in a
       <a href="https://github.com/dnexdev/tiramisu" target="_blank">hand-written C++ ML framework</a>,
-      no PyTorch, on the complete works of Shakespeare.
+      no PyTorch, on the complete works of Shakespeare. Quantized to int8 so
+      the whole model fits in an 11 MB download.
     </p>
     <div class="stats">
       <div class="stat-item">
-        <span class="stat-value">1.97M</span>
+        <span class="stat-value">10.8M</span>
         <span class="stat-label">parameters</span>
       </div>
       <div class="stat-item">
-        <span class="stat-value">95 epochs</span>
-        <span class="stat-label">trained</span>
+        <span class="stat-value">40 epochs</span>
+        <span class="stat-label">trained on a T4</span>
       </div>
       <div class="stat-item">
-        <span class="stat-value">val 1.86</span>
+        <span class="stat-value">val 1.87</span>
         <span class="stat-label">loss</span>
       </div>
       <div class="stat-item">
-        <span class="stat-value">WASM</span>
+        <span class="stat-value">int8 · WASM</span>
         <span class="stat-label">runs in browser</span>
       </div>
     </div>
@@ -62,7 +63,7 @@
           <input type="range" id="max-chars" min="50" max="800" step="50" value="150" />
           <span class="slider-val" id="chars-val">150</span>
         </div>
-        <p class="time-hint" id="time-hint">~3s in browser (~1s per 50 chars; longer runs slow down)</p>
+        <p class="time-hint" id="time-hint">10M params in the browser aren't fast — expect several seconds for short samples, more for longer ones.</p>
       </div>
 
       <div class="btn-row">

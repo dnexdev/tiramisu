@@ -40,9 +40,11 @@ endif()
 # Shared interface targets
 
 add_library(tiramisu_warnings INTERFACE)
-target_compile_options(tiramisu_warnings INTERFACE
-  -Wall -Wextra -Wpedantic -Wshadow
-)
+if(NOT MSVC)
+  target_compile_options(tiramisu_warnings INTERFACE
+    -Wall -Wextra -Wpedantic -Wshadow
+  )
+endif()
 
 add_library(tiramisu_sanitizers INTERFACE)
 if (TIRAMISU_ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")

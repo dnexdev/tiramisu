@@ -17,6 +17,8 @@ target_link_libraries(_C PRIVATE
   tiramisu_optim
 )
 
-target_compile_options(_C PRIVATE -Wno-pedantic)
+if(NOT MSVC)
+  target_compile_options(_C PRIVATE -Wno-pedantic)
+endif()
 
 install(TARGETS _C LIBRARY DESTINATION tiramisu)

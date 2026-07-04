@@ -17,10 +17,10 @@ ROOT = Path(__file__).parent.parent
 STATIC = Path(__file__).parent / "static"
 BINARY = ROOT / "build" / "examples" / "train_shakespeare"
 WASM_DIR = ROOT / "build-wasm" / "examples"
-SHAKESPEARE_CKPT = ROOT / "checkpoints" / "shakespeare_2m.ckpt"
+SHAKESPEARE_CKPT = ROOT / "checkpoints" / "shakespeare_10m_int8.ckpt"
 MNIST_WEIGHTS = ROOT / "checkpoints" / "mnist_mlp.bin"
 DATA = ROOT / "data" / "tiny_shakespeare.txt"
-PRESET = "2m"
+PRESET = "10m"
 GENERATION_TIMEOUT = int(os.environ.get("GENERATION_TIMEOUT", "180"))
 
 app = FastAPI(title="tiramisu examples")
@@ -128,7 +128,7 @@ async def shakespeare_wasm_bin():
   return wasm_file("tiramisu_infer.wasm", "application/wasm")
 
 
-@app.get("/shakespeare/assets/shakespeare_2m.ckpt")
+@app.get("/shakespeare/assets/shakespeare_10m_int8.ckpt")
 async def shakespeare_checkpoint():
   if not SHAKESPEARE_CKPT.exists():
     raise HTTPException(status_code=404, detail=f"Checkpoint not found at {SHAKESPEARE_CKPT}")

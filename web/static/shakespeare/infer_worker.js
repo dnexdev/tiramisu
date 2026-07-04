@@ -38,7 +38,7 @@ async function ensureModel() {
     return Module;
   }
 
-  const resp = await fetch(wasmUrl("assets/shakespeare_2m.ckpt"));
+  const resp = await fetch(wasmUrl("assets/shakespeare_10m_int8.ckpt"));
   if (!resp.ok) {
     throw new Error(`Failed to fetch checkpoint (${resp.status})`);
   }

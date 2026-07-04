@@ -55,11 +55,11 @@ jobs:
           cp -r web/static/mnist/* site/mnist/
           cp build-wasm/examples/tiramisu_infer.js build-wasm/examples/tiramisu_infer.wasm site/shakespeare/
           cp build-wasm/examples/mnist_infer.js build-wasm/examples/mnist_infer.wasm site/mnist/
-          cp checkpoints/shakespeare_2m.ckpt site/shakespeare/assets/
+          cp checkpoints/shakespeare_10m_int8.ckpt site/shakespeare/assets/
           cp checkpoints/mnist_mlp.bin site/mnist/assets/
           touch site/.nojekyll
           chmod -R a+rX site
-          test -s site/shakespeare/assets/shakespeare_2m.ckpt
+          test -s site/shakespeare/assets/shakespeare_10m_int8.ckpt
           test -s site/mnist/assets/mnist_mlp.bin
           du -sh site site/shakespeare/assets site/mnist/assets
 

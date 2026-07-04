@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "tiramisu-ml"
-version = "0.1.1"
+version = "0.2.0"
 description = "ML framework with tensors, autograd, NN modules, optimizers, transformers."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -9,27 +9,39 @@
 
 #include "tiramisu/core/cuda_memory.hpp"
 
-// Tiramisu GPT checkpoint format ("TIRA" v1).
+// Tiramisu GPT checkpoint format ("TIRA").
 //
+// Common header:
 //   [magic "TIRA" | 4 bytes]
-//   [version u32]
+//   [version u32]         // 1 or 2
 //   [vocab_size i64][d_model i64][num_heads i64][num_layers i64][max_seq_len i64]
 //   [tie_weights u32][step i64][epoch i64]
 //   [num_params u32]
-//   repeated num_params times:
-//     [name_len u32][name bytes]
-//     [rank u32][shape[0..rank] i64...]
-//     [data_count u32][floats: data_count * f32]
 //
-// All integers are little-endian on the host that produced the file — the
-// format is *not* portable across differing endianness. Consumers on such
-// hosts must byte-swap.
+// v1 record (version == 1):
+//   [name_len u32][name bytes]
+//   [rank u32][shape[0..rank] i64...]
+//   [data_count u32][floats: data_count * f32]
+//
+// v2 record (version == 2):
+//   [name_len u32][name bytes]
+//   [rank u32][shape[0..rank] i64...]
+//   [kind u32]                            // 0 = fp32, 1 = int8 per-channel symmetric
+//   if kind == 0:
+//     [data_count u32][floats: data_count * f32]
+//   if kind == 1:
+//     [channel_axis i64]
+//     [num_scales u32][scales: num_scales * f32]
+//     [data_count u32][int8s: data_count bytes]
+//
+// All integers are little-endian on the host that produced the file.
 namespace tiramisu::serialize {
 
 namespace {
 
 constexpr char kMagic[4] = {'T', 'I', 'R', 'A'};
-constexpr uint32_t kVersion = 1;
+constexpr uint32_t kVersionV1 = 1;
+constexpr uint32_t kVersionV2 = 2;
 
 inline int64_t checked_mul_i64(int64_t a, int64_t b, const char* ctx) {
 #if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
@@ -90,28 +102,111 @@ void write_i64(std::ofstream& out, int64_t v) {
   out.write(reinterpret_cast<const char*>(&v), sizeof(v));
 }
 
-uint32_t read_u32(std::ifstream& in) {
-  uint32_t v = 0;
-  in.read(reinterpret_cast<char*>(&v), sizeof(v));
-  return v;
-}
-
-int64_t read_i64(std::ifstream& in) {
-  int64_t v = 0;
-  in.read(reinterpret_cast<char*>(&v), sizeof(v));
-  return v;
-}
-
 void write_string(std::ofstream& out, const std::string& s) {
   write_u32(out, static_cast<uint32_t>(s.size()));
   out.write(s.data(), static_cast<std::streamsize>(s.size()));
 }
 
-std::string read_string(std::ifstream& in) {
-  const uint32_t len = read_u32(in);
-  std::string s(len, '\0');
-  in.read(s.data(), static_cast<std::streamsize>(len));
-  return s;
+int64_t shape_numel(const std::vector<int64_t>& shape) {
+  int64_t n = 1;
+  for (int64_t d : shape) {
+    n = checked_mul_i64(n, d, "shape_numel");
+  }
+  return n;
+}
+
+// Dequantize int8 per-channel symmetric into a fresh fp32 vector.
+// Same layout math as quant/src/quantize.cpp:dequantize.
+std::vector<float> dequantize_int8(const std::vector<int8_t>& q,
+                                   const std::vector<float>& scales,
+                                   const std::vector<int64_t>& shape,
+                                   int64_t channel_axis) {
+  int64_t outer = 1, channel = shape[channel_axis], inner = 1;
+  for (int64_t i = 0; i < channel_axis; ++i) outer *= shape[i];
+  for (size_t i = channel_axis + 1; i < shape.size(); ++i) inner *= shape[i];
+  if (static_cast<int64_t>(scales.size()) != channel) {
+    throw std::runtime_error("checkpoint v2: scales/channel size mismatch");
+  }
+
+  std::vector<float> out(static_cast<size_t>(outer * channel * inner));
+  for (int64_t o = 0; o < outer; ++o) {
+    for (int64_t c = 0; c < channel; ++c) {
+      const float s = scales[static_cast<size_t>(c)];
+      const int64_t base = (o * channel + c) * inner;
+      for (int64_t i = 0; i < inner; ++i) {
+        out[static_cast<size_t>(base + i)] =
+            static_cast<float>(q[static_cast<size_t>(base + i)]) * s;
+      }
+    }
+  }
+  return out;
+}
+
+ParameterEntry parse_v1_record(ByteReader& reader) {
+  ParameterEntry entry;
+  entry.name = reader.read_string();
+  const uint32_t rank = reader.read_u32();
+  entry.shape.resize(rank);
+  int64_t numel = 1;
+  for (uint32_t d = 0; d < rank; ++d) {
+    entry.shape[d] = reader.read_i64();
+    numel = checked_mul_i64(numel, entry.shape[d], "parse_v1: shape product");
+  }
+  const uint32_t count = reader.read_u32();
+  if (static_cast<int64_t>(count) != numel) {
+    throw std::runtime_error("load_gpt_checkpoint: tensor size mismatch");
+  }
+  entry.data.resize(count);
+  reader.read(entry.data.data(),
+              static_cast<std::size_t>(count) * sizeof(float));
+  return entry;
+}
+
+ParameterEntry parse_v2_record(ByteReader& reader) {
+  ParameterEntry entry;
+  entry.name = reader.read_string();
+  const uint32_t rank = reader.read_u32();
+  entry.shape.resize(rank);
+  int64_t numel = 1;
+  for (uint32_t d = 0; d < rank; ++d) {
+    entry.shape[d] = reader.read_i64();
+    numel = checked_mul_i64(numel, entry.shape[d], "parse_v2: shape product");
+  }
+
+  const uint32_t kind = reader.read_u32();
+  if (kind == kFp32) {
+    const uint32_t count = reader.read_u32();
+    if (static_cast<int64_t>(count) != numel) {
+      throw std::runtime_error("load_gpt_checkpoint: fp32 size mismatch");
+    }
+    entry.data.resize(count);
+    reader.read(entry.data.data(),
+                static_cast<std::size_t>(count) * sizeof(float));
+  } else if (kind == kInt8PerChannelSymmetric) {
+    const int64_t channel_axis = reader.read_i64();
+    if (channel_axis < 0 ||
+        channel_axis >= static_cast<int64_t>(entry.shape.size())) {
+      throw std::runtime_error("load_gpt_checkpoint: bad channel_axis");
+    }
+    const uint32_t num_scales = reader.read_u32();
+    if (static_cast<int64_t>(num_scales) != entry.shape[channel_axis]) {
+      throw std::runtime_error("load_gpt_checkpoint: scale count mismatch");
+    }
+    std::vector<float> scales(num_scales);
+    reader.read(scales.data(),
+                static_cast<std::size_t>(num_scales) * sizeof(float));
+    const uint32_t count = reader.read_u32();
+    if (static_cast<int64_t>(count) != numel) {
+      throw std::runtime_error("load_gpt_checkpoint: int8 size mismatch");
+    }
+    std::vector<int8_t> qdata(count);
+    reader.read(qdata.data(), static_cast<std::size_t>(count));
+    entry.data =
+        dequantize_int8(qdata, scales, entry.shape, channel_axis);
+  } else {
+    throw std::runtime_error("load_gpt_checkpoint: unknown kind");
+  }
+  return entry;
 }
 
 GPTCheckpoint parse_checkpoint(ByteReader& reader) {
@@ -122,7 +217,7 @@ GPTCheckpoint parse_checkpoint(ByteReader& reader) {
   }
 
   const uint32_t version = reader.read_u32();
-  if (version != kVersion) {
+  if (version != kVersionV1 && version != kVersionV2) {
     throw std::runtime_error("load_gpt_checkpoint: unsupported version");
   }
 
@@ -139,32 +234,26 @@ GPTCheckpoint parse_checkpoint(ByteReader& reader) {
   const uint32_t num_params = reader.read_u32();
   ckpt.parameters.reserve(num_params);
   for (uint32_t i = 0; i < num_params; ++i) {
-    ParameterEntry entry;
-    entry.name = reader.read_string();
-    const uint32_t rank = reader.read_u32();
-    entry.shape.resize(rank);
-    int64_t numel = 1;
-    for (uint32_t d = 0; d < rank; ++d) {
-      entry.shape[d] = reader.read_i64();
-      numel = checked_mul_i64(numel, entry.shape[d],
-                              "parse_checkpoint: shape product");
-    }
-    const uint32_t count = reader.read_u32();
-    if (static_cast<int64_t>(count) != numel) {
-      throw std::runtime_error("load_gpt_checkpoint: tensor size mismatch");
-    }
-    // count * sizeof(float) is computed in size_t; count is uint32_t so
-    // this cannot overflow on 64-bit platforms, but we assert the invariant
-    // for clarity and future-proofing against smaller size_t.
-    static_assert(sizeof(std::size_t) >= sizeof(uint32_t),
-                  "size_t must fit uint32_t counts");
-    entry.data.resize(count);
-    reader.read(entry.data.data(),
-                static_cast<std::size_t>(count) * sizeof(float));
-    ckpt.parameters.push_back(std::move(entry));
+    ckpt.parameters.push_back(version == kVersionV1 ? parse_v1_record(reader)
+                                                    : parse_v2_record(reader));
   }
 
   return ckpt;
+}
+
+void write_header(std::ofstream& out, const nn::GPTConfig& cfg, int64_t step,
+                  int64_t epoch, uint32_t version, uint32_t num_params) {
+  out.write(kMagic, sizeof(kMagic));
+  write_u32(out, version);
+  write_i64(out, cfg.vocab_size);
+  write_i64(out, cfg.d_model);
+  write_i64(out, cfg.num_heads);
+  write_i64(out, cfg.num_layers);
+  write_i64(out, cfg.max_seq_len);
+  write_u32(out, cfg.tie_weights ? 1u : 0u);
+  write_i64(out, step);
+  write_i64(out, epoch);
+  write_u32(out, num_params);
 }
 
 void apply_checkpoint_weights(const GPTCheckpoint& ckpt, nn::GPT& model) {
@@ -207,17 +296,8 @@ void save_gpt_checkpoint(const std::string& path, const GPTCheckpoint& ckpt) {
     throw std::runtime_error("save_gpt_checkpoint: cannot open " + path);
   }
 
-  out.write(kMagic, sizeof(kMagic));
-  write_u32(out, kVersion);
-  write_i64(out, ckpt.config.vocab_size);
-  write_i64(out, ckpt.config.d_model);
-  write_i64(out, ckpt.config.num_heads);
-  write_i64(out, ckpt.config.num_layers);
-  write_i64(out, ckpt.config.max_seq_len);
-  write_u32(out, ckpt.config.tie_weights ? 1u : 0u);
-  write_i64(out, ckpt.step);
-  write_i64(out, ckpt.epoch);
-  write_u32(out, static_cast<uint32_t>(ckpt.parameters.size()));
+  write_header(out, ckpt.config, ckpt.step, ckpt.epoch, kVersionV1,
+               static_cast<uint32_t>(ckpt.parameters.size()));
 
   for (const auto& entry : ckpt.parameters) {
     write_string(out, entry.name);
@@ -228,6 +308,63 @@ void save_gpt_checkpoint(const std::string& path, const GPTCheckpoint& ckpt) {
     write_u32(out, static_cast<uint32_t>(entry.data.size()));
     out.write(reinterpret_cast<const char*>(entry.data.data()),
               static_cast<std::streamsize>(entry.data.size() * sizeof(float)));
+  }
+}
+
+void save_raw_gpt_checkpoint(const std::string& path,
+                             const RawGPTCheckpoint& ckpt) {
+  std::ofstream out(path, std::ios::binary);
+  if (!out) {
+    throw std::runtime_error("save_raw_gpt_checkpoint: cannot open " + path);
+  }
+
+  write_header(out, ckpt.config, ckpt.step, ckpt.epoch, kVersionV2,
+               static_cast<uint32_t>(ckpt.parameters.size()));
+
+  for (const auto& entry : ckpt.parameters) {
+    const int64_t numel = shape_numel(entry.shape);
+    write_string(out, entry.name);
+    write_u32(out, static_cast<uint32_t>(entry.shape.size()));
+    for (int64_t dim : entry.shape) {
+      write_i64(out, dim);
+    }
+    write_u32(out, static_cast<uint32_t>(entry.kind));
+
+    if (entry.kind == kFp32) {
+      if (static_cast<int64_t>(entry.fp32_data.size()) != numel) {
+        throw std::runtime_error("save_raw: fp32 size != shape numel for " +
+                                 entry.name);
+      }
+      write_u32(out, static_cast<uint32_t>(entry.fp32_data.size()));
+      out.write(
+          reinterpret_cast<const char*>(entry.fp32_data.data()),
+          static_cast<std::streamsize>(entry.fp32_data.size() * sizeof(float)));
+    } else if (entry.kind == kInt8PerChannelSymmetric) {
+      if (entry.channel_axis < 0 ||
+          entry.channel_axis >= static_cast<int64_t>(entry.shape.size())) {
+        throw std::runtime_error("save_raw: bad channel_axis for " +
+                                 entry.name);
+      }
+      if (static_cast<int64_t>(entry.scales.size()) !=
+          entry.shape[entry.channel_axis]) {
+        throw std::runtime_error("save_raw: scale count mismatch for " +
+                                 entry.name);
+      }
+      if (static_cast<int64_t>(entry.int8_data.size()) != numel) {
+        throw std::runtime_error("save_raw: int8 size != shape numel for " +
+                                 entry.name);
+      }
+      write_i64(out, entry.channel_axis);
+      write_u32(out, static_cast<uint32_t>(entry.scales.size()));
+      out.write(
+          reinterpret_cast<const char*>(entry.scales.data()),
+          static_cast<std::streamsize>(entry.scales.size() * sizeof(float)));
+      write_u32(out, static_cast<uint32_t>(entry.int8_data.size()));
+      out.write(reinterpret_cast<const char*>(entry.int8_data.data()),
+                static_cast<std::streamsize>(entry.int8_data.size()));
+    } else {
+      throw std::runtime_error("save_raw: unknown kind for " + entry.name);
+    }
   }
 }
 

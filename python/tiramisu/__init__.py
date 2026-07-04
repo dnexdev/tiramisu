@@ -1,10 +1,12 @@
 """tiramisu — a readable from-scratch ML framework."""
 
 from tiramisu._C import (  # noqa: F401
+    Device,
     Tensor,
     add,
     backward,
     contiguous,
+    cuda_available,
     div,
     from_numpy,
     gelu,
@@ -21,10 +23,12 @@ from tiramisu._C import (  # noqa: F401
 )
 
 __all__ = [
+    "Device",
     "Tensor",
     "add",
     "backward",
     "contiguous",
+    "cuda_available",
     "div",
     "from_numpy",
     "gelu",
@@ -40,6 +44,7 @@ __all__ = [
     "transpose",
     "nn",
     "optim",
+    "serialize",
 ]
 
-from tiramisu import nn, optim  # noqa: E402
+from tiramisu import nn, optim, serialize  # noqa: E402

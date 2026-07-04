@@ -64,6 +64,7 @@ add_subdirectory(ops)
 add_subdirectory(nn)
 add_subdirectory(optim)
 add_subdirectory(serialize)
+add_subdirectory(quant)
 
 # Tests, examples, and bench
 

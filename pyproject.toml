@@ -39,5 +39,7 @@ manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
-# Wheels are per-arch. macos-13 runner builds x86_64, macos-14 runner builds arm64.
+# Build both arches on the macos-14 (arm64) runner; x86_64 is cross-compiled.
+# cibuildwheel auto-skips the test-command for cross-built wheels.
+archs = ["arm64", "x86_64"]
 environment = { MACOSX_DEPLOYMENT_TARGET = "13.0" }

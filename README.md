@@ -2,177 +2,25 @@
 
 ![MNIST training — loss over 10 epochs](docs/assets/mnist_training.gif)
 
-*A 2-layer MLP (`784 → 128 → ReLU → 10`) training on MNIST with Adam. Generated from the stock [`examples/mnist`](examples/mnist.cpp) binary — regenerate with `python scripts/plot_training.py build/mnist_run.log` (see [Training GIF](#training-gif)).*
+A from-scratch ML framework in **C++20** — about **5,000 lines** of readable, PyTorch-familiar code with a Python binding.
 
-**The deep learning framework you can actually read.**
-
-Tiramisu is a from-scratch machine learning stack in **C++20** — about **5,000 lines** of framework code, structured like a production framework but small enough to read in an afternoon.
-
-- **~5,000 lines** of framework code (`core` → `ops` → `autograd` → `nn` → `optim`)
-- **Stdlib-only compute** — no Eigen, no BLAS, no PyTorch at link time
-- **PyTorch-familiar API** — `Tensor`, `requires_grad`, `backward()`, `Module`, `Linear`, `Adam` (Python and C++)
-- **Built to teach** — explicit autograd graph, readable kernels, end-to-end MNIST
-
-Real tensors, real autograd, real training — at a scale you can read cover to cover.
+- Stdlib-only compute (no Eigen, no BLAS, no PyTorch at link time)
+- `Tensor`, `requires_grad`, `backward()`, `Module`, `Linear`, `Adam` — Python and C++
+- AVX2/FMA matmul on x86, scalar fallback elsewhere
+- Optional CUDA backend for GPU training
+- End-to-end MNIST and char-level GPT examples
 
 [![CMake on multiple platforms](https://github.com/dnexdev/tiramisu/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/dnexdev/tiramisu/actions/workflows/cmake-multi-platform.yml)
 
----
-
-## Development timeline
-
-What's shipped today vs what's planned. Legend: ✅ shipped · 🚧 in progress · 📋 roadmap
-
-| Phase | | What |
-|-------|---|------|
-| Foundation | ✅ | `Storage`, `Tensor` views, strides, dtypes |
-| Ops | ✅ | Elementwise ops, broadcast, reduce, matmul (AVX2/FMA) |
-| Autograd | ✅ | `Node`, `backward()`, `gradcheck`, `NoGradGuard` |
-| NN + optim | ✅ | `Linear`, `cross_entropy_loss`, SGD, Adam, MNIST example |
-| Normalization | ✅ | `softmax`, `layernorm` forward + backward |
-| Batched matmul | ✅ | N-D GEMM with batch broadcast |
-| Transformer / GPT | ✅ | Embedding, MHA, FFN, `TransformerBlock`, GPT |
-| CUDA backend | ✅ | GPU training via `-DTIRAMISU_ENABLE_CUDA=ON` and `--cuda` |
-| Python bindings | ✅ | `pip install .` — Tensor, autograd, `nn`, `optim` |
-| Conv2d, serialize, quant | 📋 | README placeholders today |
-
----
-
-## API at a glance
-
-If you know PyTorch, you already know most of tiramisu — in **Python** (`pip install .`) or **C++**.
-
-### Autograd
-
-<table>
-<tr><th>PyTorch</th><th>Tiramisu (Python)</th><th>Tiramisu (C++)</th></tr>
-<tr><td>
-
-```python
-x = torch.tensor([2.0], requires_grad=True)
-y = x * x + 3.0 * x
-y.backward()
-print(x.grad)  # tensor([7.])
-```
-
-</td><td>
-
-```python
-import numpy as np
-import tiramisu as tr
-
-x = tr.from_numpy(np.array([2.0], dtype=np.float32))
-x.requires_grad = True
-y = tr.add(tr.mul(x, x), tr.mul(x, 3.0))
-y.backward()
-print(x.grad)  # [7.]
-```
-
-</td><td>
-
-```cpp
-#include "tiramisu/autograd/ops.hpp"
-
-Tensor x({1});
-x.at<float>({0}) = 2.0f;
-x.set_requires_grad(true);
-
-Tensor y = autograd::add(autograd::mul(x, x),
-                         autograd::mul(x, 3.0f));
-autograd::backward(y);
-// x.grad()->at<float>({0}) == 7.0f
-```
-
-</td></tr>
-</table>
-
-### Training step
-
-<table>
-<tr><th>PyTorch</th><th>Tiramisu (Python)</th><th>Tiramisu (C++)</th></tr>
-<tr><td>
-
-```python
-optimizer.zero_grad()
-logits = model(batch_x)
-loss = F.cross_entropy(logits, batch_y)
-loss.backward()
-optimizer.step()
-```
-
-</td><td>
-
-```python
-import tiramisu as tr
-
-opt.zero_grad()
-h = layer1.forward(batch_x)
-h = tr.relu(h)
-logits = layer2.forward(h)
-loss = tr.nn.cross_entropy_loss(logits, batch_y)
-loss.backward()
-opt.step()
-```
-
-</td><td>
-
-```cpp
-opt.zero_grad();
-Tensor h = layer1->forward(batch_x);
-h = autograd::relu(h);
-Tensor logits = layer2->forward(h);
-Tensor loss = nn::cross_entropy_loss(logits, batch_y);
-autograd::backward(loss);
-opt.step();
-```
-
-</td></tr>
-</table>
-
-### Linear layer
-
-<table>
-<tr><th>PyTorch</th><th>Tiramisu (Python)</th><th>Tiramisu (C++)</th></tr>
-<tr><td>
-
-```python
-layer = nn.Linear(784, 128)
-# y = x @ W.T + b
-y = layer(x)
-```
-
-</td><td>
-
-```python
-import tiramisu as tr
-
-layer = tr.nn.Linear(784, 128)
-out = layer.forward(x)
-```
-
-</td><td>
-
-```cpp
-// weight: (in_features, out_features), bias: (out_features,)
-Tensor out = autograd::matmul(x, weight);
-y = autograd::add(out, bias);  // bias broadcasts over batch
-```
-
-</td></tr>
-</table>
-
----
-
-## Quick start (Python)
-
-Requires **Python 3.10+** and a **C++20** compiler.
+## Install
 
 ```bash
-pip install .
-python -c "import tiramisu as tr; print(tr.nn.Linear(10, 5))"
+pip install tiramisu-ml
 ```
 
-Forward pass with NumPy interop:
+Requires Python 3.10+. Wheels ship for Linux (x86_64, aarch64) and macOS (x86_64, arm64); other platforms build from sdist and need CMake + a C++20 compiler.
+
+## Quick start
 
 ```python
 import numpy as np
@@ -184,117 +32,72 @@ out = layer.forward(x)
 print(out.shape())  # [2, 10]
 ```
 
-See [`examples/python/`](examples/python/) and [`python/README.md`](python/README.md) for GPT training steps and the full binding reference.
+Training step:
 
----
-
-## Quick start (C++)
-
-Requires **CMake 3.20+** and a **C++20** compiler.
-
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+```python
+opt.zero_grad()
+h = tr.relu(layer1.forward(batch_x))
+logits = layer2.forward(h)
+loss = tr.nn.cross_entropy_loss(logits, batch_y)
+loss.backward()
+opt.step()
 ```
 
-Debug builds enable ASan + UBSan by default (`TIRAMISU_ENABLE_SANITIZERS=ON`).  
-Use `-DCMAKE_BUILD_TYPE=Release` for optimized ops (`-O3 -mavx2 -mfma`) without sanitizers.
+C++ mirrors the Python API — see [`examples/mnist.cpp`](examples/mnist.cpp).
 
-### Run MNIST
+## API
 
-1. Download [MNIST IDX files](http://yann.lecun.com/exdb/mnist/) into `data/`:
-   - `train-images-idx3-ubyte`, `train-labels-idx1-ubyte`
-   - `t10k-images-idx3-ubyte`, `t10k-labels-idx1-ubyte`
-2. Build (above), then:
+**Tensor ops** — `add`, `sub`, `mul`, `div`, `neg`, `matmul`, `sum`, `mean`, `reshape`, `transpose`, `contiguous`, `relu`, `gelu`, `softmax`, `from_numpy`, `backward`
 
-```bash
-cd build/examples && ./mnist
-```
+**Modules** — `nn.Linear`, `nn.LayerNorm`, `nn.GPT`, `nn.cross_entropy_loss`
 
-Expected: loss decreases over 10 epochs, ~95%+ test accuracy.
+**Optimizers** — `optim.Adam`
 
----
+Full binding reference in [`python/README.md`](python/README.md).
 
-## Read the whole stack
+## Examples
 
-A guided path through the codebase (~2.3k LOC of libraries):
-
-| # | File | Why read it |
-|---|------|-------------|
-| 1 | [`core/include/tiramisu/core/tensor.hpp`](core/include/tiramisu/core/tensor.hpp) | Views, strides, autograd hooks |
-| 2 | [`ops/cpu/broadcast.cpp`](ops/cpu/broadcast.cpp) | NumPy-style broadcast rules |
-| 3 | [`ops/cpu/elementwise.cpp`](ops/cpu/elementwise.cpp) | Stride-0 broadcast trick |
-| 4 | [`autograd/src/ops.cpp`](autograd/src/ops.cpp) | `backward()` + wrapper pattern |
-| 5 | [`nn/src/linear.cpp`](nn/src/linear.cpp) | One layer: `Y = XW + b` |
-| 6 | [`examples/mnist.cpp`](examples/mnist.cpp) | Full training loop |
-
-Compare to [micrograd](https://github.com/karpathy/micrograd) (minimal autograd in Python), [tinygrad](https://github.com/tinygrad/tinygrad) (full stack, large codebase), and [llm.c](https://github.com/karpathy/llm.c) (training-focused C). Tiramisu targets **typed C++**, **modular libraries**, and **MNIST end-to-end** as a readable reference implementation — not production throughput.
-
----
-
-## Training GIF
-
-Regenerate the README animation after a local training run:
-
-```bash
-cd build/examples && ./mnist 2>&1 | tee ../mnist_run.log
-pip install -r scripts/requirements.txt   # matplotlib, pillow
-python scripts/plot_training.py build/mnist_run.log
-```
-
-Output: [`docs/assets/mnist_training.gif`](docs/assets/mnist_training.gif)
-
----
-
-## Char-level GPT training
-
-Train a tiny, ~2M, or ~10M-parameter GPT on [Tiny Shakespeare](data/tiny_shakespeare.txt):
+**MNIST** (CPU, ~10 epochs to 95%+):
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target mnist
+./build/examples/mnist
+```
+
+Data: [MNIST IDX files](http://yann.lecun.com/exdb/mnist/) in `data/`.
+
+**Char-level GPT** on Tiny Shakespeare:
+
+```bash
 cmake --build build --target train_shakespeare
 ./build/examples/train_shakespeare --preset tiny --epochs 3
 ```
 
-GPU training (~2M preset tuned for a 6GB card):
+Presets: `tiny`, `2m`, `10m`. Add `--cuda` for GPU.
+
+## Build from source
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTIRAMISU_ENABLE_CUDA=ON
-cmake --build build --target train_shakespeare
-./build/examples/train_shakespeare --preset 2m --cuda --epochs 5 \
-  --checkpoint build/shakespeare_2m.ckpt
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
-Smoke test on GPU:
-
-```bash
-./build/examples/train_shakespeare --preset tiny --cuda --epochs 1 --max-batches 10
-```
-
-For the ~10M config (CPU-slow; use CUDA when available):
-
-```bash
-./scripts/run_10m_training.sh
-```
-
-Checkpoints use the binary format in `serialize/`. Options: `--preset tiny|2m|10m`, `--cuda`, `--checkpoint PATH`, `--max-batches N`.
-
----
+CUDA: `-DTIRAMISU_ENABLE_CUDA=ON`. Debug builds enable ASan+UBSan by default.
 
 ## Layout
 
 ```
 core/       Storage, Tensor, dtype, device
 ops/cpu/    Forward kernels (elementwise, reduce, matmul, normalization)
-ops/cuda/   Optional CUDA kernels (-DTIRAMISU_ENABLE_CUDA=ON)
+ops/cuda/   Optional CUDA kernels
 autograd/   Differentiable wrappers, backward(), gradcheck
-nn/         Module, Linear, GPT, loss, LayerNorm, …
+nn/         Module, Linear, GPT, LayerNorm, loss
 optim/      SGD, Adam, AdamW, grad clipping, cosine LR
-python/     pybind11 bindings (`pip install .`)
+python/     pybind11 bindings
 serialize/  GPT checkpoint save/load
 examples/   hello_tiramisu, mnist, train_shakespeare
-tests/      GoogleTest (fetched by CMake)
 ```
 
-GoogleTest is the only non-stdlib fetch at configure time. Compute uses the **C++ standard library** only (plus compiler intrinsics for AVX2 in `ops`).
+GoogleTest is the only non-stdlib fetch at configure time. License: MIT.

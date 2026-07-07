@@ -1,21 +1,22 @@
 ![tiramisu](docs/assets/banner.png)
 
-A from-scratch ML framework in **C++20**.
+A from-scratch ML framework in **C++20** with a PyTorch-like Python API.
 
 ## Features
 
-- A strided tensor engine with zero-copy views
-- Reverse-mode autograd with gradient checking on every op
-- Hand-written AVX2 SIMD matmul (8x faster than naive)
-- Full transformer stack (multi-head attention, LayerNorm, GELU)
-- CUDA backend with custom kernels
+- **Automatic differentiation** -- reverse-mode autograd with gradient checking on every op
+- **Strided tensor engine** -- zero-copy views, NumPy interop
+- **Hand-written AVX2 SIMD matmul** -- ~8x faster than naive on x86
+- **Full transformer stack** -- multi-head attention, LayerNorm, GELU, GPT
+- **CUDA backend** -- optional GPU kernels (`--device cuda` in Python, `-DTIRAMISU_ENABLE_CUDA=ON` in CMake)
+- **PyTorch-familiar API** -- `Tensor`, `requires_grad`, `backward()`, `nn.Linear`, `optim.Adam`
 
 [![PyPI](https://img.shields.io/pypi/v/tiramisu-ml.svg)](https://pypi.org/project/tiramisu-ml/)
 [![Python](https://img.shields.io/pypi/pyversions/tiramisu-ml.svg)](https://pypi.org/project/tiramisu-ml/)
 [![CMake on multiple platforms](https://github.com/dnexdev/tiramisu/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/dnexdev/tiramisu/actions/workflows/cmake-multi-platform.yml)
 [![License: MIT](https://img.shields.io/pypi/l/tiramisu-ml.svg)](LICENSE)
 
-## Install
+## Installation
 
 ```bash
 pip install tiramisu-ml
@@ -23,89 +24,192 @@ pip install tiramisu-ml
 
 Requires Python 3.10+. Wheels ship for Linux (x86_64, aarch64) and macOS (x86_64, arm64); other platforms build from sdist and need CMake + a C++20 compiler.
 
-## Quick start
+## Quick Start
 
 ```python
 import numpy as np
 import tiramisu as tr
 
-x = tr.from_numpy(np.random.randn(2, 784).astype(np.float32))
-layer = tr.nn.Linear(784, 10)
-print(layer.forward(x).shape())  # [2, 10]
+# Random batch of 32 samples, 10 features, 3 classes
+x = tr.from_numpy(np.random.randn(32, 10).astype(np.float32))
+targets = tr.from_numpy(np.random.randint(0, 3, size=(32,)).astype(np.float32))
+
+layer1 = tr.nn.Linear(10, 64)
+layer2 = tr.nn.Linear(64, 3)
+
+# Forward pass
+h = tr.relu(layer1.forward(x))
+logits = layer2.forward(h)
+loss = tr.nn.cross_entropy_loss(logits, targets)
+
+# Backward pass
+loss.backward()
+
+# Optimize
+params = layer1.parameters() + layer2.parameters()
+optimizer = tr.optim.Adam(params, lr=1e-3)
+optimizer.step()
+optimizer.zero_grad()
 ```
 
-## Example: train an MLP on MNIST
+## API Reference
 
-Grab the [MNIST IDX files](http://yann.lecun.com/exdb/mnist/) into `data/`, then:
+### Tensor
 
 ```python
 import numpy as np
 import tiramisu as tr
 
-def load_images(path):
-    with open(path, "rb") as f:
-        _, n, r, c = np.frombuffer(f.read(16), ">u4")
-        return np.frombuffer(f.read(), np.uint8).reshape(n, r * c).astype(np.float32) / 255
+# Creation
+tr.Tensor([2, 3])                        # zero-filled float32
+tr.from_numpy(np.zeros((2, 3), np.float32))
 
-def load_labels(path):
-    with open(path, "rb") as f:
-        _, n = np.frombuffer(f.read(8), ">u4")
-        return np.frombuffer(f.read(), np.uint8).astype(np.float32)
+# Arithmetic (with autograd)
+tr.add(a, b)       tr.add(a, 2.0)      # addition
+tr.sub(a, b)                             # subtraction
+tr.mul(a, b)       tr.mul(a, 2.0)      # multiplication
+tr.div(a, b)                             # division
+tr.neg(a)                                # negation
 
-X = load_images("data/train-images-idx3-ubyte")
-y = load_labels("data/train-labels-idx1-ubyte")
+# Activations
+tr.relu(a)       tr.gelu(a)            # ReLU, GELU
+tr.softmax(a)                          # softmax
 
-fc1 = tr.nn.Linear(784, 128)
-fc2 = tr.nn.Linear(128, 10)
-opt = tr.optim.Adam(fc1.parameters() + fc2.parameters(), lr=1e-3)
+# Reductions
+tr.sum(a)        tr.mean(a)            # sum / mean over all elements
 
-for epoch in range(5):
-    idx = np.random.permutation(len(X))
-    for i in range(0, len(idx), 64):
-        b = idx[i:i + 64]
-        bx, by = tr.from_numpy(X[b]), tr.from_numpy(y[b])
-        logits = fc2.forward(tr.relu(fc1.forward(bx)))
-        loss = tr.nn.cross_entropy_loss(logits, by)
-        opt.zero_grad(); loss.backward(); opt.step()
-    print(f"epoch {epoch}: loss={float(np.asarray(loss)[0]):.4f}")
+# Layout
+a.reshape([6])                           # reshape
+tr.transpose(a)                        # swap last two dims
+a.contiguous()                         # ensure contiguous memory
+
+# Linear algebra
+tr.matmul(a, b)                        # matrix multiplication
+
+# Autograd
+x = tr.from_numpy(np.array([2.0], np.float32))
+x.requires_grad = True
+y = tr.mul(x, x)
+y.backward()
+x.grad                                 # gradient tensor
+
+# NumPy interop
+arr = np.asarray(a)                    # zero-copy when contiguous
+a.numpy()                              # same, via method
 ```
 
-Expected: loss decreases to ~0.1 after 5 epochs, ~95%+ test accuracy.
-
-## Example: one GPT training step
+### Neural Network Modules
 
 ```python
-import numpy as np
 import tiramisu as tr
 
-vocab, seq = 65, 8
-model = tr.nn.GPT(vocab_size=vocab, d_model=32, num_heads=2, num_layers=1, max_seq_len=seq)
-opt = tr.optim.Adam(model.parameters(), lr=1e-3)
+linear = tr.nn.Linear(in_features=784, out_features=10)
+layernorm = tr.nn.LayerNorm(features=128)
+gpt = tr.nn.GPT(
+    vocab_size=65,
+    d_model=128,
+    num_heads=4,
+    num_layers=2,
+    max_seq_len=256,
+)
 
-tokens = tr.from_numpy((np.arange(seq) % vocab).reshape(1, seq).astype(np.float32))
-logits = model.forward(tokens)  # (batch, seq, vocab)
-
-flat_logits = tr.from_numpy(np.asarray(logits)[:, :-1, :].reshape(-1, vocab))
-flat_targets = tr.from_numpy(np.asarray(tokens)[:, 1:].reshape(-1))
-loss = tr.nn.cross_entropy_loss(flat_logits, flat_targets)
-
-opt.zero_grad(); loss.backward(); opt.step()
-print(f"loss={float(np.asarray(loss)[0]):.4f}")
+out = linear.forward(x)
+params = gpt.parameters()
+cfg = gpt.config()
 ```
 
-Full training loops for both live in [`examples/`](examples/) (C++) and [`examples/python/`](examples/python/).
+### Functional Operations
 
-## API
+```python
+import tiramisu as tr
 
-**Tensor ops**: `add`, `sub`, `mul`, `div`, `neg`, `matmul`, `sum`, `mean`, `reshape`, `transpose`, `contiguous`, `relu`, `gelu`, `softmax`, `from_numpy`, `backward`
+loss = tr.nn.cross_entropy_loss(logits, targets)
+sm = tr.softmax(logits)
+g = tr.gelu(x)
+```
 
-**Modules**:: `nn.Linear`, `nn.LayerNorm`, `nn.GPT`, `nn.cross_entropy_loss`
+### Optimizers
 
-**Optimizers**:: `optim.Adam`
+```python
+import tiramisu as tr
 
-Full binding reference in [`python/README.md`](python/README.md).
+optimizer = tr.optim.Adam(parameters, lr=1e-3)
+optimizer = tr.optim.AdamW(parameters, lr=3e-4, weight_decay=0.1)
+optimizer = tr.optim.SGD(parameters, lr=0.01)
 
-## Build from source
+optimizer.step()
+optimizer.zero_grad()
+
+tr.optim.clip_grad_norm_(parameters, max_norm=1.0)
+
+scheduler = tr.optim.CosineAnnealingLR(base_lr=3e-4, total_steps=1000)
+lr = scheduler.step()
+```
+
+### Serialize
+
+```python
+import tiramisu as tr
+
+tr.serialize.save_gpt("model.ckpt", model, step=100, epoch=1)
+step, epoch = tr.serialize.load_gpt("model.ckpt", model)
+```
+
+### Device
+
+```python
+import tiramisu as tr
+
+tr.cuda_available()                    # True if built with CUDA
+x = tr.from_numpy(arr, device="cuda")  # place tensor on GPU
+loss.cpu().numpy()                     # move back to CPU for NumPy
+```
+
+Token indices are stored as `float32` tensors today (the C++ embedding path reads float indices).
+
+## Architecture
+
+```
+Python API (tiramisu)
+    │
+    └─→ pybind11 (_C)
+            │
+            ├─→ core/      Tensor, Storage, dtype, device
+            ├─→ ops/       CPU kernels (AVX2); optional CUDA
+            ├─→ autograd/  backward tape, gradcheck
+            ├─→ nn/        Linear, GPT, LayerNorm, loss
+            └─→ optim/     Adam, AdamW, SGD, schedulers
+```
+
+## Examples
+
+Runnable scripts live in [`examples/python/`](examples/python/) and [`examples/`](examples/) (C++).
+
+| Script | Description |
+|--------|-------------|
+| [`examples/python/autograd_demo.py`](examples/python/autograd_demo.py) | Minimal autograd: y = x² + 3x |
+| [`examples/python/linear_forward.py`](examples/python/linear_forward.py) | Forward pass + NumPy interop |
+| [`examples/python/train_mnist.py`](examples/python/train_mnist.py) | 2-layer MLP on MNIST |
+| [`examples/python/gpt_step.py`](examples/python/gpt_step.py) | Single GPT training step |
+| [`examples/python/train_shakespeare.py`](examples/python/train_shakespeare.py) | Char-level GPT on Tiny Shakespeare |
+
+```bash
+# Python (after pip install)
+python examples/python/train_mnist.py --data-dir data --epochs 5
+python examples/python/train_shakespeare.py --preset tiny --epochs 3
+```
+
+C++ examples require a local build (see below):
+
+```bash
+cmake --build build --target mnist && ./build/examples/mnist
+cmake --build build --target train_shakespeare
+./build/examples/train_shakespeare --preset tiny --epochs 3
+```
+
+## Building from source
+
+Only needed for C++ development, CUDA, or contributing. Requires CMake 3.20+ and a C++20 compiler.
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -113,33 +217,17 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-CUDA: `-DTIRAMISU_ENABLE_CUDA=ON`. Debug builds enable ASan+UBSan by default.
+CUDA: add `-DTIRAMISU_ENABLE_CUDA=ON`. Debug builds enable ASan + UBSan by default (`TIRAMISU_ENABLE_SANITIZERS=ON`).
 
-Run the C++ MNIST example:
-
-```bash
-cmake --build build --target mnist && ./build/examples/mnist
-```
-
-Char-level GPT on Tiny Shakespeare (presets `tiny`, `2m`, `10m`; add `--cuda` for GPU):
+Python editable install from the repo root:
 
 ```bash
-cmake --build build --target train_shakespeare
-./build/examples/train_shakespeare --preset tiny --epochs 3
+pip install -e ".[dev]"
+pytest tests/python -v
 ```
 
-## Layout
+See [`python/README.md`](python/README.md) for CMake Python extension build notes.
 
-```
-core/       Storage, Tensor, dtype, device
-ops/cpu/    Forward kernels (elementwise, reduce, matmul, normalization)
-ops/cuda/   Optional CUDA kernels
-autograd/   Differentiable wrappers, backward(), gradcheck
-nn/         Module, Linear, GPT, LayerNorm, loss
-optim/      SGD, Adam, AdamW, grad clipping, cosine LR
-python/     pybind11 bindings
-serialize/  GPT checkpoint save/load
-examples/   hello_tiramisu, mnist, train_shakespeare
-```
+## License
 
-License: MIT.
+MIT

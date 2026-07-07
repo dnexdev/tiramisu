@@ -1,14 +1,14 @@
-# tiramisu
+![tiramisu](docs/assets/banner.png)
 
-![MNIST training — loss over 10 epochs](docs/assets/mnist_training.gif)
+A from-scratch ML framework in **C++20**.
 
-A from-scratch ML framework in **C++20** — about **5,000 lines** of readable, PyTorch-familiar code with a Python binding.
+## Features
 
-- Stdlib-only compute (no Eigen, no BLAS, no PyTorch at link time)
-- `Tensor`, `requires_grad`, `backward()`, `Module`, `Linear`, `Adam` — Python and C++
-- AVX2/FMA matmul on x86, scalar fallback elsewhere
-- Optional CUDA backend for GPU training
-- End-to-end MNIST and char-level GPT examples
+- A strided tensor engine with zero-copy views
+- Reverse-mode autograd with gradient checking on every op
+- Hand-written AVX2 SIMD matmul (8x faster than naive)
+- Full transformer stack (multi-head attention, LayerNorm, GELU)
+- CUDA backend with custom kernels
 
 [![PyPI](https://img.shields.io/pypi/v/tiramisu-ml.svg)](https://pypi.org/project/tiramisu-ml/)
 [![Python](https://img.shields.io/pypi/pyversions/tiramisu-ml.svg)](https://pypi.org/project/tiramisu-ml/)
@@ -97,11 +97,11 @@ Full training loops for both live in [`examples/`](examples/) (C++) and [`exampl
 
 ## API
 
-**Tensor ops** — `add`, `sub`, `mul`, `div`, `neg`, `matmul`, `sum`, `mean`, `reshape`, `transpose`, `contiguous`, `relu`, `gelu`, `softmax`, `from_numpy`, `backward`
+**Tensor ops**: `add`, `sub`, `mul`, `div`, `neg`, `matmul`, `sum`, `mean`, `reshape`, `transpose`, `contiguous`, `relu`, `gelu`, `softmax`, `from_numpy`, `backward`
 
-**Modules** — `nn.Linear`, `nn.LayerNorm`, `nn.GPT`, `nn.cross_entropy_loss`
+**Modules**:: `nn.Linear`, `nn.LayerNorm`, `nn.GPT`, `nn.cross_entropy_loss`
 
-**Optimizers** — `optim.Adam`
+**Optimizers**:: `optim.Adam`
 
 Full binding reference in [`python/README.md`](python/README.md).
 

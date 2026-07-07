@@ -1,6 +1,7 @@
 #include "tiramisu/optim/lr_scheduler.hpp"
 
 #include <cmath>
+#include <numbers>
 
 namespace tiramisu::optim {
 
@@ -32,7 +33,8 @@ float CosineAnnealingLR::step() {
   const float progress =
       static_cast<float>(step_count_) / static_cast<float>(total_steps_);
   current_lr_ =
-      min_lr_ + 0.5f * (base_lr_ - min_lr_) * (1.0f + std::cos(M_PI * progress));
+      min_lr_ + 0.5f * (base_lr_ - min_lr_) *
+          (1.0f + std::cos(std::numbers::pi_v<float> * progress));
   return current_lr_;
 }
 

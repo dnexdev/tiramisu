@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <stdexcept>
 #include <unordered_set>
 
 #include "tiramisu/autograd/grad_mode.hpp"

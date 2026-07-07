@@ -72,7 +72,7 @@ Tensor tensor_from_numpy(const py::array& arr, const py::object& device) {
   }
 
   std::vector<int64_t> shape(static_cast<size_t>(floats.ndim()));
-  for (ssize_t i = 0; i < floats.ndim(); ++i) {
+  for (py::ssize_t i = 0; i < floats.ndim(); ++i) {
     shape[static_cast<size_t>(i)] = floats.shape(i);
   }
 
@@ -91,11 +91,11 @@ py::array tensor_to_numpy(Tensor& t) {
   if (c.device() == Device::CUDA) {
     c = c.to(Device::CPU);
   }
-  std::vector<ssize_t> shape(c.shape().begin(), c.shape().end());
-  std::vector<ssize_t> strides;
+  std::vector<py::ssize_t> shape(c.shape().begin(), c.shape().end());
+  std::vector<py::ssize_t> strides;
   strides.reserve(c.strides().size());
   for (int64_t s : c.strides()) {
-    strides.push_back(s * static_cast<ssize_t>(sizeof(float)));
+    strides.push_back(s * static_cast<py::ssize_t>(sizeof(float)));
   }
   // c is a fresh contiguous CPU copy (or was already CPU-contiguous); py::array
   // will copy its buffer here so we don't hand out a dangling pointer.
@@ -243,11 +243,11 @@ PYBIND11_MODULE(_C, m) {
           throw std::runtime_error(
               "buffer protocol requires contiguous tensor; call contiguous()");
         }
-        std::vector<ssize_t> shape(t.shape().begin(), t.shape().end());
-        std::vector<ssize_t> strides;
+        std::vector<py::ssize_t> shape(t.shape().begin(), t.shape().end());
+        std::vector<py::ssize_t> strides;
         strides.reserve(t.strides().size());
         for (int64_t s : t.strides()) {
-          strides.push_back(s * static_cast<ssize_t>(sizeof(float)));
+          strides.push_back(s * static_cast<py::ssize_t>(sizeof(float)));
         }
         return py::buffer_info(
             t.data<float>(), sizeof(float),

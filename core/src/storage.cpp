@@ -5,6 +5,10 @@
 #include <new>
 #include <stdexcept>
 
+#ifdef _MSC_VER
+#include <malloc.h>
+#endif
+
 #include "tiramisu/core/dtype.hpp"
 
 #ifdef TIRAMISU_CUDA_ENABLED
@@ -48,7 +52,11 @@ Storage::Storage(std::size_t count, DType dtype, Device device,
   }
 #endif
 
+#ifdef _MSC_VER
+  data_ = static_cast<std::byte*>(_aligned_malloc(alloc_size, alignment_));
+#else
   data_ = static_cast<std::byte*>(std::aligned_alloc(alignment_, alloc_size));
+#endif
   if (!data_) {
     throw std::bad_alloc();
   }
@@ -66,7 +74,11 @@ Storage::~Storage() {
   }
 #endif
 
+#ifdef _MSC_VER
+  _aligned_free(data_);
+#else
   std::free(data_);
+#endif
 }
 
 std::byte* Storage::data() { return data_; }

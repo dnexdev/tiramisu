@@ -22,6 +22,8 @@ endif()
 
 if(EMSCRIPTEN)
   target_compile_options(tiramisu_ops PRIVATE -O3 -msimd128)
+elseif(MSVC)
+  target_compile_options(tiramisu_ops PRIVATE /O2 /arch:AVX2)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
   target_compile_options(tiramisu_ops PRIVATE -O3 -mavx2 -mfma)
 else()

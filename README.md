@@ -22,7 +22,7 @@ A from-scratch ML framework in **C++20** with a PyTorch-like Python API.
 pip install tiramisu-ml
 ```
 
-Requires Python 3.10+. Wheels ship for Linux (x86_64, aarch64) and macOS (x86_64, arm64); other platforms build from sdist and need CMake + a C++20 compiler.
+Requires Python 3.10+. Wheels ship for Linux (x86_64, aarch64), macOS (x86_64, arm64), and Windows (amd64); other platforms build from sdist and need CMake + a C++20 compiler.
 
 ## Quick Start
 

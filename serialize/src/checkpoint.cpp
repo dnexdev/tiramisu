@@ -44,12 +44,19 @@ constexpr uint32_t kVersionV1 = 1;
 constexpr uint32_t kVersionV2 = 2;
 
 inline int64_t checked_mul_i64(int64_t a, int64_t b, const char* ctx) {
-#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_mul_overflow)
   int64_t r;
   if (__builtin_mul_overflow(a, b, &r)) {
     throw std::overflow_error(std::string("integer overflow in ") + ctx);
   }
   return r;
+#  else
+  if (a != 0 && b != 0 && (a * b) / a != b) {
+    throw std::overflow_error(std::string("integer overflow in ") + ctx);
+  }
+  return a * b;
+#  endif
 #else
   if (a != 0 && b != 0 && (a * b) / a != b) {
     throw std::overflow_error(std::string("integer overflow in ") + ctx);

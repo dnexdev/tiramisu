@@ -28,12 +28,23 @@ int64_t normalize_dim(int64_t dim, int64_t rank) {
 // under-allocate, then out-of-bounds writes follow. Uses the compiler
 // intrinsic when available (GCC / Clang / recent MSVC).
 inline int64_t checked_mul_i64(int64_t a, int64_t b, const char* ctx) {
-#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_mul_overflow)
   int64_t result;
   if (__builtin_mul_overflow(a, b, &result)) {
     throw std::overflow_error(std::string("integer overflow in ") + ctx);
   }
   return result;
+#  else
+  if (a != 0 && b != 0) {
+    const int64_t candidate = a * b;
+    if (candidate / a != b) {
+      throw std::overflow_error(std::string("integer overflow in ") + ctx);
+    }
+    return candidate;
+  }
+  return a * b;
+#  endif
 #else
   if (a != 0 && b != 0) {
     const int64_t candidate = a * b;

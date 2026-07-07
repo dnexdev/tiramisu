@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "tiramisu-ml"
-version = "0.2.0"
+version = "0.2.1"
 description = "ML framework with tensors, autograd, NN modules, optimizers, transformers."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,3 +43,6 @@ manylinux-aarch64-image = "manylinux_2_28"
 # cibuildwheel auto-skips the test-command for cross-built wheels.
 archs = ["arm64", "x86_64"]
 environment = { MACOSX_DEPLOYMENT_TARGET = "13.0" }
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]

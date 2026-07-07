@@ -99,3 +99,20 @@ jobs:
         pytest tests/python -v
     - name: Build wheel
       run: python -m build
+
+  windows-python-build:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Configure
+      run: >
+        cmake -S . -B build
+        -DTIRAMISU_BUILD_PYTHON=ON
+        -DTIRAMISU_BUILD_TESTS=OFF
+        -DTIRAMISU_BUILD_EXAMPLES=OFF
+        -DTIRAMISU_ENABLE_SANITIZERS=OFF
+    - name: Build
+      run: cmake --build build --config Release

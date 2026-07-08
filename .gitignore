@@ -16,6 +16,8 @@ dist/
 build-wasm/
 site/
 *.whl
+.DS_Store
+*.ipynb
 
 # MNIST data files
 *.idx3-ubyte

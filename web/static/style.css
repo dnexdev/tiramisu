@@ -1,13 +1,14 @@
 *, *::before, *::after {box-sizing: border-box; margin: 0; padding: 0}
 
 :root {
-  --ink: #e8e0d0;
-  --ink-dim: #7a7060;
-  --paper: #0f0e0c;
-  --paper-2:  #1a1916;
-  --paper-3: #252320;
-  --gold: #c9a84c;
-  --gold-dim:  #7a6330;
+  --ink: #1a1612;
+  --ink-dim: #6b6050;
+  --paper: #faf8f4;
+  --paper-2: #f3efe6;
+  --paper-3: #ddd4c4;
+  --gold: #a8832a;
+  --gold-dim: #c9a84c;
+  --on-gold: #1a1612;
   --radius: 4px;
 }
 
@@ -201,7 +202,7 @@ button:active { transform: scale(0.98); }
 
 .btn-primary {
   background: var(--gold);
-  color: var(--paper);
+  color: var(--on-gold);
 }
 
 .btn-primary:hover {opacity: 0.9;}

@@ -51,6 +51,7 @@ jobs:
         run: |
           mkdir -p site/shakespeare site/mnist site/shakespeare/assets site/mnist/assets
           cp web/static/index.html web/static/style.css site/
+          cp web/static/favicon.ico web/static/favicon.png web/static/apple-touch-icon.png site/
           cp -r web/static/shakespeare/* site/shakespeare/
           cp -r web/static/mnist/* site/mnist/
           cp build-wasm/examples/tiramisu_infer.js build-wasm/examples/tiramisu_infer.wasm site/shakespeare/
@@ -59,6 +60,8 @@ jobs:
           cp checkpoints/mnist_mlp.bin site/mnist/assets/
           touch site/.nojekyll
           chmod -R a+rX site
+          test -s site/favicon.ico
+          test -s site/favicon.png
           test -s site/shakespeare/assets/shakespeare_10m_int8.ckpt
           test -s site/mnist/assets/mnist_mlp.bin
           du -sh site site/shakespeare/assets site/mnist/assets

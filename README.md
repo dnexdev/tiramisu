@@ -80,7 +80,7 @@ tr.sum(a)        tr.mean(a)            # sum / mean over all elements
 
 # Layout
 a.reshape([6])                           # reshape
-tr.transpose(a)                        # swap last two dims
+tr.transpose(a, 0, 1)                  # swap dims 0 and 1
 a.contiguous()                         # ensure contiguous memory
 
 # Linear algebra

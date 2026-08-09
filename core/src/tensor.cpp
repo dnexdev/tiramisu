@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -35,31 +36,39 @@ inline int64_t checked_mul_i64(int64_t a, int64_t b, const char* ctx) {
     throw std::overflow_error(std::string("integer overflow in ") + ctx);
   }
   return result;
-#  else
-  if (a != 0 && b != 0) {
-    const int64_t candidate = a * b;
-    if (candidate / a != b) {
-      throw std::overflow_error(std::string("integer overflow in ") + ctx);
-    }
-    return candidate;
-  }
-  return a * b;
 #  endif
-#else
-  if (a != 0 && b != 0) {
-    const int64_t candidate = a * b;
-    if (candidate / a != b) {
-      throw std::overflow_error(std::string("integer overflow in ") + ctx);
-    }
-    return candidate;
-  }
-  return a * b;
 #endif
+  if (a == 0 || b == 0) {
+    return 0;
+  }
+  // Avoid signed overflow UB: check via unsigned magnitude.
+  const bool neg = (a < 0) != (b < 0);
+  const uint64_t ua = static_cast<uint64_t>(a < 0 ? -static_cast<uint64_t>(a)
+                                                  : static_cast<uint64_t>(a));
+  const uint64_t ub = static_cast<uint64_t>(b < 0 ? -static_cast<uint64_t>(b)
+                                                  : static_cast<uint64_t>(b));
+  if (ua > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) / ub) {
+    throw std::overflow_error(std::string("integer overflow in ") + ctx);
+  }
+  const int64_t mag = static_cast<int64_t>(ua * ub);
+  if (neg) {
+    return -mag;
+  }
+  return mag;
+}
+
+void validate_shape_dims(const std::vector<int64_t>& shape) {
+  for (int64_t dim : shape) {
+    if (dim < 0) {
+      throw std::invalid_argument("Tensor shape dimensions must be >= 0");
+    }
+  }
 }
 
 }  // namespace
 
 std::vector<int64_t> contiguous_strides(const std::vector<int64_t>& shape) {
+  validate_shape_dims(shape);
   std::vector<int64_t> strides(shape.size());
 
   if (shape.empty()) {
@@ -78,10 +87,15 @@ std::vector<int64_t> contiguous_strides(const std::vector<int64_t>& shape) {
 
 Tensor::Tensor(std::vector<int64_t> shape, DType dtype, Device device)
     : shape_(std::move(shape)), offset_(0) {
+  validate_shape_dims(shape_);
   strides_ = contiguous_strides(shape_);
   int64_t elements = numel();
+  if (elements < 0) {
+    throw std::overflow_error("Tensor::Tensor: negative element count");
+  }
 
-  storage_ = std::make_shared<Storage>(elements, dtype, device);
+  storage_ = std::make_shared<Storage>(static_cast<std::size_t>(elements), dtype,
+                                       device);
 }
 
 Tensor::Tensor(std::shared_ptr<Storage> storage, std::vector<int64_t> shape,
@@ -93,6 +107,7 @@ Tensor::Tensor(std::shared_ptr<Storage> storage, std::vector<int64_t> shape,
   if (!storage_) {
     throw std::invalid_argument("Tensor view created with null Storage.");
   }
+  validate_shape_dims(shape_);
   if (shape_.size() != strides_.size()) {
     throw std::invalid_argument("Shape and strides must have the same rank.");
   }
@@ -158,6 +173,7 @@ Tensor Tensor::view(std::vector<int64_t> new_shape) const {
     throw std::runtime_error("Cannot view a non-contiguous tensor.");
   }
 
+  validate_shape_dims(new_shape);
   int64_t new_numel = 1;
   for (int64_t dim : new_shape) {
     new_numel = checked_mul_i64(new_numel, dim, "Tensor::view");
@@ -234,18 +250,26 @@ Tensor Tensor::to(Device device) const {
   if (device == this->device()) {
     return *this;
   }
+  Tensor src = contiguous();
   Tensor result(shape_, dtype(), device);
-  cuda_mem::copy_bytes(data<float>(), result.data<float>(),
-                       static_cast<std::size_t>(numel()) * sizeof(float),
-                       this->device(), device);
+  const std::size_t itemsize = dtype_size(dtype());
+  const std::size_t nbytes = static_cast<std::size_t>(src.numel()) * itemsize;
+  cuda_mem::copy_bytes(src.storage_->data() + src.offset_ * itemsize,
+                       result.storage_->data(), nbytes, src.device(), device);
   return result;
 }
 
 Tensor Tensor::slice(int64_t dim, int64_t start, int64_t end) const {
   if (dim != 0)
     throw std::runtime_error("Only dim 0 slicing supported for now");
+  if (shape_.empty()) {
+    throw std::invalid_argument("slice: cannot slice a scalar tensor");
+  }
+  if (start < 0 || end < start || end > shape_[0]) {
+    throw std::out_of_range("slice: start/end out of range for dim 0");
+  }
 
-  size_t new_offset = offset_ + start * strides_[0];
+  size_t new_offset = offset_ + static_cast<size_t>(start) * strides_[0];
 
   std::vector<int64_t> new_shape = shape_;
   new_shape[0] = end - start;
@@ -267,13 +291,19 @@ void Tensor::accumulate_grad(const Tensor& g) {
 
   if (!autograd_state_->grad) {
     Tensor new_grad(c_g.shape(), c_g.dtype(), dev);
-    cuda_mem::copy_bytes(c_g.data<float>(), new_grad.data<float>(),
-                         static_cast<std::size_t>(c_g.numel()) * sizeof(float),
-                         dev, dev);
+    const std::size_t nbytes =
+        static_cast<std::size_t>(c_g.numel()) * dtype_size(c_g.dtype());
+    cuda_mem::copy_bytes(c_g.data<float>(), new_grad.data<float>(), nbytes, dev,
+                         dev);
     autograd_state_->grad = std::make_shared<Tensor>(new_grad);
   } else {
     if (autograd_state_->grad->device() != dev) {
       throw std::runtime_error("accumulate_grad: device mismatch");
+    }
+    if (autograd_state_->grad->shape() != c_g.shape() ||
+        autograd_state_->grad->numel() != c_g.numel()) {
+      throw std::runtime_error(
+          "accumulate_grad: gradient shape does not match existing grad");
     }
     cuda_mem::add_f32(autograd_state_->grad->data<float>(), c_g.data<float>(),
                       autograd_state_->grad->numel(), dev);

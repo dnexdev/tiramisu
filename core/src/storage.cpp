@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstdlib>
+#include <limits>
 #include <new>
 #include <stdexcept>
 
@@ -87,7 +88,13 @@ const std::byte* Storage::data() const { return data_; }
 
 std::size_t Storage::numel() const { return count_; }
 
-std::size_t Storage::nbytes() const { return count_ * dtype_size(dtype_); }
+std::size_t Storage::nbytes() const {
+  const std::size_t elem = dtype_size(dtype_);
+  if (count_ != 0 && elem > std::numeric_limits<std::size_t>::max() / count_) {
+    throw std::overflow_error("Storage::nbytes: size overflow");
+  }
+  return count_ * elem;
+}
 
 DType Storage::dtype() const { return dtype_; }
 

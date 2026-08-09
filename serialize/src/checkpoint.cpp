@@ -65,6 +65,13 @@ inline int64_t checked_mul_i64(int64_t a, int64_t b, const char* ctx) {
 #endif
 }
 
+inline uint32_t checked_u32(std::size_t n, const char* ctx) {
+  if (n > static_cast<std::size_t>(std::numeric_limits<uint32_t>::max())) {
+    throw std::overflow_error(std::string("value exceeds uint32 in ") + ctx);
+  }
+  return static_cast<uint32_t>(n);
+}
+
 class ByteReader {
  public:
   explicit ByteReader(std::span<const std::byte> data) : data_(data) {}
@@ -129,13 +136,20 @@ std::vector<float> dequantize_int8(const std::vector<int8_t>& q,
                                    const std::vector<int64_t>& shape,
                                    int64_t channel_axis) {
   int64_t outer = 1, channel = shape[channel_axis], inner = 1;
-  for (int64_t i = 0; i < channel_axis; ++i) outer *= shape[i];
-  for (size_t i = channel_axis + 1; i < shape.size(); ++i) inner *= shape[i];
+  for (int64_t i = 0; i < channel_axis; ++i) {
+    outer = checked_mul_i64(outer, shape[i], "dequantize_int8: outer");
+  }
+  for (size_t i = channel_axis + 1; i < shape.size(); ++i) {
+    inner = checked_mul_i64(inner, shape[i], "dequantize_int8: inner");
+  }
   if (static_cast<int64_t>(scales.size()) != channel) {
     throw std::runtime_error("checkpoint v2: scales/channel size mismatch");
   }
 
-  std::vector<float> out(static_cast<size_t>(outer * channel * inner));
+  const int64_t total =
+      checked_mul_i64(checked_mul_i64(outer, channel, "dequantize_int8"),
+                      inner, "dequantize_int8: total");
+  std::vector<float> out(static_cast<size_t>(total));
   for (int64_t o = 0; o < outer; ++o) {
     for (int64_t c = 0; c < channel; ++c) {
       const float s = scales[static_cast<size_t>(c)];
@@ -304,15 +318,15 @@ void save_gpt_checkpoint(const std::string& path, const GPTCheckpoint& ckpt) {
   }
 
   write_header(out, ckpt.config, ckpt.step, ckpt.epoch, kVersionV1,
-               static_cast<uint32_t>(ckpt.parameters.size()));
+               checked_u32(ckpt.parameters.size(), "save_gpt: num_params"));
 
   for (const auto& entry : ckpt.parameters) {
     write_string(out, entry.name);
-    write_u32(out, static_cast<uint32_t>(entry.shape.size()));
+    write_u32(out, checked_u32(entry.shape.size(), "save_gpt: rank"));
     for (int64_t dim : entry.shape) {
       write_i64(out, dim);
     }
-    write_u32(out, static_cast<uint32_t>(entry.data.size()));
+    write_u32(out, checked_u32(entry.data.size(), "save_gpt: data_count"));
     out.write(reinterpret_cast<const char*>(entry.data.data()),
               static_cast<std::streamsize>(entry.data.size() * sizeof(float)));
   }
@@ -326,12 +340,12 @@ void save_raw_gpt_checkpoint(const std::string& path,
   }
 
   write_header(out, ckpt.config, ckpt.step, ckpt.epoch, kVersionV2,
-               static_cast<uint32_t>(ckpt.parameters.size()));
+               checked_u32(ckpt.parameters.size(), "save_raw: num_params"));
 
   for (const auto& entry : ckpt.parameters) {
     const int64_t numel = shape_numel(entry.shape);
     write_string(out, entry.name);
-    write_u32(out, static_cast<uint32_t>(entry.shape.size()));
+    write_u32(out, checked_u32(entry.shape.size(), "save_raw: rank"));
     for (int64_t dim : entry.shape) {
       write_i64(out, dim);
     }
@@ -342,7 +356,7 @@ void save_raw_gpt_checkpoint(const std::string& path,
         throw std::runtime_error("save_raw: fp32 size != shape numel for " +
                                  entry.name);
       }
-      write_u32(out, static_cast<uint32_t>(entry.fp32_data.size()));
+      write_u32(out, checked_u32(entry.fp32_data.size(), "save_raw: fp32_count"));
       out.write(
           reinterpret_cast<const char*>(entry.fp32_data.data()),
           static_cast<std::streamsize>(entry.fp32_data.size() * sizeof(float)));
@@ -362,11 +376,11 @@ void save_raw_gpt_checkpoint(const std::string& path,
                                  entry.name);
       }
       write_i64(out, entry.channel_axis);
-      write_u32(out, static_cast<uint32_t>(entry.scales.size()));
+      write_u32(out, checked_u32(entry.scales.size(), "save_raw: scales"));
       out.write(
           reinterpret_cast<const char*>(entry.scales.data()),
           static_cast<std::streamsize>(entry.scales.size() * sizeof(float)));
-      write_u32(out, static_cast<uint32_t>(entry.int8_data.size()));
+      write_u32(out, checked_u32(entry.int8_data.size(), "save_raw: int8_count"));
       out.write(reinterpret_cast<const char*>(entry.int8_data.data()),
                 static_cast<std::streamsize>(entry.int8_data.size()));
     } else {

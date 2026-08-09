@@ -87,14 +87,41 @@ void contiguous_copy(const Tensor& src, Tensor& dst) {
   if (src.device() != dst.device()) {
     throw std::runtime_error("contiguous_copy: device mismatch");
   }
+  if (src.dtype() != dst.dtype()) {
+    throw std::runtime_error("contiguous_copy: dtype mismatch");
+  }
+  const std::size_t itemsize = dtype_size(src.dtype());
+  const auto src_ptr = [&]() -> const void* {
+    if (src.dtype() == DType::Float32) {
+      return src.data<float>();
+    }
+    if (src.dtype() == DType::Int32) {
+      return src.data<int32_t>();
+    }
+    throw std::runtime_error("contiguous_copy: unsupported dtype");
+  };
+  const auto dst_ptr = [&]() -> void* {
+    if (dst.dtype() == DType::Float32) {
+      return dst.data<float>();
+    }
+    if (dst.dtype() == DType::Int32) {
+      return dst.data<int32_t>();
+    }
+    throw std::runtime_error("contiguous_copy: unsupported dtype");
+  };
+
   if (src.is_contiguous()) {
-    copy_bytes(src.data<float>(), dst.data<float>(),
-               static_cast<std::size_t>(src.numel()) * sizeof(float),
-               src.device(), dst.device());
+    copy_bytes(src_ptr(), dst_ptr(),
+               static_cast<std::size_t>(src.numel()) * itemsize, src.device(),
+               dst.device());
     return;
   }
 
   if (src.device() == Device::CUDA) {
+    if (src.dtype() != DType::Float32) {
+      throw std::runtime_error(
+          "contiguous_copy: non-contiguous CUDA copy only supports Float32");
+    }
 #ifdef TIRAMISU_CUDA_ENABLED
     const int64_t rank = static_cast<int64_t>(src.shape().size());
     detail::contiguous_strided_cuda(
@@ -106,10 +133,8 @@ void contiguous_copy(const Tensor& src, Tensor& dst) {
     return;
   }
 
-  const std::size_t itemsize = sizeof(float);
-  const std::byte* src_base =
-      reinterpret_cast<const std::byte*>(src.data<float>());
-  std::byte* dst_bytes = reinterpret_cast<std::byte*>(dst.data<float>());
+  const std::byte* src_base = reinterpret_cast<const std::byte*>(src_ptr());
+  std::byte* dst_bytes = reinterpret_cast<std::byte*>(dst_ptr());
   const int64_t total_elements = src.numel();
   const int64_t rank = static_cast<int64_t>(src.shape().size());
 

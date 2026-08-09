@@ -83,6 +83,10 @@ jobs:
         -DTIRAMISU_ENABLE_CUDA=ON
     - name: Build
       run: cmake --build build-cuda --parallel
+    - name: Smoke test CUDA build
+      run: ctest --test-dir build-cuda --output-on-failure
+      # No GPU on the runner; this still exercises host-side dispatch/guards
+      # compiled into the CUDA-enabled binary.
   python-bindings:
     runs-on: ubuntu-latest
     steps:

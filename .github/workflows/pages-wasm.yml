@@ -26,6 +26,9 @@ jobs:
         with:
           lfs: true
 
+      - name: Install Ninja
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:

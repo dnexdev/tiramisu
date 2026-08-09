@@ -160,7 +160,7 @@ step, epoch = tr.serialize.load_gpt("model.ckpt", model)
 ```python
 import tiramisu as tr
 
-tr.cuda_available()                    # True if built with CUDA
+tr.cuda_available()                    # True if a CUDA device is present
 x = tr.from_numpy(arr, device="cuda")  # place tensor on GPU
 loss.cpu().numpy()                     # move back to CPU for NumPy
 ```

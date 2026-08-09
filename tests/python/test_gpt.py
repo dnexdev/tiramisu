@@ -13,20 +13,22 @@ def test_gpt_training_step():
         num_layers=1,
         max_seq_len=seq,
     )
-    ids = tr.from_numpy(np.mod(np.arange(seq), vocab).astype(np.float32).reshape(1, seq))
-    logits = model.forward(ids)
+    tokens = np.mod(np.arange(seq + 1), vocab).astype(np.float32)
+    ids = tr.from_numpy(tokens[:-1].reshape(1, seq))
+    targets = tr.from_numpy(tokens[1:].reshape(-1))
 
-    logits_np = np.asarray(logits)
-    targets_np = np.asarray(ids)
-    flat_logits = tr.from_numpy(logits_np[:, :-1, :].reshape(-1, vocab))
-    flat_targets = tr.from_numpy(targets_np[:, 1:].reshape(-1))
-    loss = tr.nn.cross_entropy_loss(flat_logits, flat_targets)
-    loss.backward()
-
-    opt = tr.optim.Adam(model.parameters(), lr=1e-2)
+    params = model.parameters()
+    opt = tr.optim.Adam(params, lr=1e-2)
     opt.zero_grad()
-    loss = tr.nn.cross_entropy_loss(flat_logits, flat_targets)
-    loss.backward()
-    opt.step()
 
+    logits = model.forward(ids)
+    flat_logits = tr.reshape(logits, [seq, vocab])
+    loss = tr.nn.cross_entropy_loss(flat_logits, targets)
+    loss.backward()
+
+    assert any(p.grad is not None for p in params)
+    weight_before = np.array(params[0], copy=True)
+    opt.step()
+    weight_after = np.asarray(params[0])
+    assert not np.allclose(weight_before, weight_after)
     assert float(np.asarray(loss)[0]) > 0.0

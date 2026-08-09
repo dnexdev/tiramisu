@@ -1,6 +1,7 @@
 #include "tiramisu/optim/grad_clip.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
 #include "tiramisu/core/device.hpp"
 
@@ -12,10 +13,22 @@ namespace tiramisu::optim {
 
 float clip_grad_norm(std::vector<Tensor*>& parameters, float max_norm) {
 #ifdef TIRAMISU_CUDA_ENABLED
+  bool any_cuda = false;
+  bool any_cpu = false;
   for (Tensor* p : parameters) {
-    if (p->grad() && p->grad()->device() == Device::CUDA) {
-      return ops::cuda::clip_grad_norm(parameters, max_norm);
+    if (!p->grad()) continue;
+    if (p->grad()->device() == Device::CUDA) {
+      any_cuda = true;
+    } else {
+      any_cpu = true;
     }
+  }
+  if (any_cuda && any_cpu) {
+    throw std::runtime_error(
+        "clip_grad_norm: mixed CPU/CUDA gradients are not supported");
+  }
+  if (any_cuda) {
+    return ops::cuda::clip_grad_norm(parameters, max_norm);
   }
 #endif
 

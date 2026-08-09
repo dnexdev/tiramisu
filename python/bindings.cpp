@@ -10,6 +10,7 @@
 #include <pybind11/stl.h>
 
 #include "tiramisu/autograd/ops.hpp"
+#include "tiramisu/core/cuda_common.hpp"
 #include "tiramisu/core/device.hpp"
 #include "tiramisu/core/dtype.hpp"
 #include "tiramisu/core/tensor.hpp"
@@ -218,12 +219,12 @@ PYBIND11_MODULE(_C, m) {
       "cuda_available",
       []() {
 #ifdef TIRAMISU_CUDA_ENABLED
-        return true;
+        return tiramisu::cuda_available();
 #else
         return false;
 #endif
       },
-      "True if this build was compiled with CUDA support.");
+      "True if a CUDA device is available at runtime.");
 
   py::class_<Tensor>(m, "Tensor", py::buffer_protocol())
       .def(py::init([](const py::iterable& shape) {

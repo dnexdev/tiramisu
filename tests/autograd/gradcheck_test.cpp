@@ -45,6 +45,20 @@ TEST(AutogradGradcheckTest, Div) {
   EXPECT_TRUE(autograd::gradcheck(f, a, 1e-2, 1e-2));
 }
 
+TEST(AutogradGradcheckTest, DivBroadcast) {
+  Tensor a({3, 1});
+  Tensor b({3, 4});
+  for (int i = 0; i < 3; i++) {
+    a.at<float>({i, 0}) = 2.0f;
+  }
+  std::fill_n(b.data<float>(), b.numel(), 2.0f);
+
+  auto f = [&b](const Tensor& t) {
+    return autograd::sum(autograd::div(t, b));
+  };
+  EXPECT_TRUE(autograd::gradcheck(f, a, 1e-2, 1e-2));
+}
+
 TEST(AutogradGradcheckTest, Neg) {
   Tensor x({1});
   x.at<float>({0}) = 4.0f;

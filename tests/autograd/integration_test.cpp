@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "tiramisu/autograd/grad_mode.hpp"
 #include "tiramisu/autograd/ops.hpp"
 #include "tiramisu/core/tensor.hpp"
@@ -49,6 +51,30 @@ TEST(AutogradIntegrationTest, BiasBroadcastBackwardSumsOverBatch) {
   EXPECT_EQ(bias.grad()->shape(), std::vector<int64_t>({2}));
   EXPECT_FLOAT_EQ(bias.grad()->at<float>({0}), 3.0f);
   EXPECT_FLOAT_EQ(bias.grad()->at<float>({1}), 3.0f);
+}
+
+TEST(AutogradIntegrationTest, SameRankBroadcastBackward) {
+  Tensor a({3, 1});
+  Tensor b({3, 4});
+  for (int i = 0; i < 3; i++) {
+    a.at<float>({i, 0}) = static_cast<float>(i + 1);
+  }
+  std::fill_n(b.data<float>(), b.numel(), 1.0f);
+  a.set_requires_grad(true);
+  b.set_requires_grad(true);
+
+  Tensor out = autograd::add(a, b);
+  Tensor loss = autograd::sum(out);
+  autograd::backward(loss);
+
+  ASSERT_NE(a.grad(), nullptr);
+  ASSERT_NE(b.grad(), nullptr);
+  EXPECT_EQ(a.grad()->shape(), std::vector<int64_t>({3, 1}));
+  EXPECT_EQ(b.grad()->shape(), std::vector<int64_t>({3, 4}));
+  EXPECT_FLOAT_EQ(a.grad()->at<float>({0, 0}), 4.0f);
+  EXPECT_FLOAT_EQ(a.grad()->at<float>({1, 0}), 4.0f);
+  EXPECT_FLOAT_EQ(a.grad()->at<float>({2, 0}), 4.0f);
+  EXPECT_FLOAT_EQ(b.grad()->at<float>({0, 0}), 1.0f);
 }
 
 TEST(AutogradIntegrationTest, InferenceSkipsGraphWithNoGradGuard) {

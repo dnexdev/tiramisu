@@ -37,11 +37,70 @@
 //   ∂L/∂x = Σ over broadcast axes of ∂L/∂y.
 namespace tiramisu::autograd {
 
-// Sum `grad` over leading dimensions until its rank matches `target_shape`.
-// Broadcasted binary ops (add/mul/…) emit a grad shaped like the broadcast
-// output; the leaf input received an implicit broadcast that copied its
-// values across those leading axes, and reverse mode collapses those
-// copies by summing.
+// Sum `grad` over broadcast axes until its shape matches `target_shape`.
+// Handles both leading-rank padding (e.g. [4] vs [2,3,4]) and same-rank
+// size-1 axes (e.g. [3,1] vs [3,4]).
+static Tensor sum_dim_keepdim(const Tensor& t, size_t dim) {
+  const auto& shape = t.shape();
+  if (dim >= shape.size()) {
+    throw std::invalid_argument("sum_dim_keepdim: dim out of range");
+  }
+  if (shape[dim] == 1) {
+    return t;
+  }
+
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (t.device() == Device::CUDA) {
+    std::vector<int64_t> order(shape.size());
+    order[0] = static_cast<int64_t>(dim);
+    size_t k = 1;
+    for (size_t i = 0; i < shape.size(); ++i) {
+      if (i != dim) {
+        order[k++] = static_cast<int64_t>(i);
+      }
+    }
+    Tensor reduced =
+        ops::cuda::reduce_sum_first_dim(t.permute(order).contiguous());
+    std::vector<int64_t> mid_shape = {1};
+    mid_shape.insert(mid_shape.end(), reduced.shape().begin(),
+                     reduced.shape().end());
+    Tensor with_dim = reduced.reshape(mid_shape);
+    std::vector<int64_t> inv(order.size());
+    for (size_t i = 0; i < order.size(); ++i) {
+      inv[static_cast<size_t>(order[i])] = static_cast<int64_t>(i);
+    }
+    return with_dim.permute(inv).contiguous();
+  }
+#endif
+
+  Tensor c = t.contiguous();
+  int64_t outer = 1;
+  for (size_t i = 0; i < dim; ++i) {
+    outer *= shape[i];
+  }
+  const int64_t extent = shape[dim];
+  int64_t inner = 1;
+  for (size_t i = dim + 1; i < shape.size(); ++i) {
+    inner *= shape[i];
+  }
+
+  std::vector<int64_t> out_shape = shape;
+  out_shape[dim] = 1;
+  Tensor out(out_shape, c.dtype(), c.device());
+  float* dst = out.data<float>();
+  const float* src = c.data<float>();
+  cuda_mem::fill_f32(dst, 0.0f, out.numel(), c.device());
+
+  for (int64_t o = 0; o < outer; ++o) {
+    for (int64_t e = 0; e < extent; ++e) {
+      for (int64_t i = 0; i < inner; ++i) {
+        dst[o * inner + i] += src[(o * extent + e) * inner + i];
+      }
+    }
+  }
+  return out;
+}
+
 static Tensor reduce_grad_to(const Tensor& grad,
                              const std::vector<int64_t>& target_shape) {
   if (grad.shape() == target_shape) {
@@ -72,6 +131,31 @@ static Tensor reduce_grad_to(const Tensor& grad,
       }
     }
     result = summed;
+  }
+
+  if (result.shape().size() < target_shape.size()) {
+    throw std::runtime_error(
+        "reduce_grad_to: grad rank is smaller than target shape");
+  }
+
+  // Align trailing axes: sum wherever the target was size-1-broadcast.
+  const size_t rank = target_shape.size();
+  const size_t rank_diff = result.shape().size() - rank;
+  for (size_t i = 0; i < rank; ++i) {
+    const int64_t gdim = result.shape()[rank_diff + i];
+    const int64_t tdim = target_shape[i];
+    if (tdim == gdim) {
+      continue;
+    }
+    if (tdim != 1) {
+      throw std::runtime_error(
+          "reduce_grad_to: cannot reduce grad to incompatible target shape");
+    }
+    result = sum_dim_keepdim(result, rank_diff + i);
+  }
+
+  if (result.shape() != target_shape) {
+    throw std::runtime_error("reduce_grad_to: shape mismatch after reduce");
   }
 
   return result;
@@ -188,7 +272,8 @@ Tensor div(const Tensor& a, const Tensor& b) {
       Tensor num = tiramisu::ops::mul(neg_grad, a);
       Tensor grad_b = tiramisu::ops::div(num, b_sq);
 
-      return std::vector<Tensor>{grad_a, grad_b};
+      return std::vector<Tensor>{reduce_grad_to(grad_a, a.shape()),
+                                 reduce_grad_to(grad_b, b.shape())};
     };
     out.set_requires_grad(true);
     out.set_grad_fn(node);

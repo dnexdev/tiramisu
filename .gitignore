@@ -18,6 +18,7 @@ site/
 *.whl
 .DS_Store
 *.ipynb
+*.mov
 
 # MNIST data files
 *.idx3-ubyte

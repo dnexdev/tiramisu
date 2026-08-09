@@ -139,6 +139,10 @@ __global__ void broadcast_binary_kernel(const float* a, const float* b,
     out[i] = av + bv;
   } else if (op == 1) {
     out[i] = av * bv;
+  } else if (op == 2) {
+    out[i] = av - bv;
+  } else if (op == 3) {
+    out[i] = av / bv;
   } else {
     out[i] = -av;
   }
@@ -167,6 +171,22 @@ __global__ void neg_kernel(const float* in, float* out, int64_t n) {
     return;
   }
   out[i] = -in[i];
+}
+
+__global__ void exp_kernel(const float* in, float* out, int64_t n) {
+  const int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) {
+    return;
+  }
+  out[i] = expf(in[i]);
+}
+
+__global__ void log_kernel(const float* in, float* out, int64_t n) {
+  const int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) {
+    return;
+  }
+  out[i] = logf(in[i]);
 }
 
 __global__ void sum_kernel(const float* in, float* out, int64_t n) {
@@ -379,9 +399,19 @@ Tensor add(const Tensor& a, const Tensor& b) {
   return launch_broadcast_binary(a.contiguous(), b.contiguous(), 0);
 }
 
+Tensor sub(const Tensor& a, const Tensor& b) {
+  assert_same_device(a, b);
+  return launch_broadcast_binary(a.contiguous(), b.contiguous(), 2);
+}
+
 Tensor mul(const Tensor& a, const Tensor& b) {
   assert_same_device(a, b);
   return launch_broadcast_binary(a.contiguous(), b.contiguous(), 1);
+}
+
+Tensor div(const Tensor& a, const Tensor& b) {
+  assert_same_device(a, b);
+  return launch_broadcast_binary(a.contiguous(), b.contiguous(), 3);
 }
 
 Tensor neg(const Tensor& t) {
@@ -390,6 +420,26 @@ Tensor neg(const Tensor& t) {
   const int block = 256;
   const int grid = static_cast<int>((t.numel() + block - 1) / block);
   neg_kernel<<<grid, block>>>(c.data<float>(), out.data<float>(), t.numel());
+  TIRAMISU_CUDA_CHECK(cudaGetLastError());
+  return out;
+}
+
+Tensor exp(const Tensor& t) {
+  Tensor c = t.contiguous();
+  Tensor out(t.shape(), DType::Float32, Device::CUDA);
+  const int block = 256;
+  const int grid = static_cast<int>((t.numel() + block - 1) / block);
+  exp_kernel<<<grid, block>>>(c.data<float>(), out.data<float>(), t.numel());
+  TIRAMISU_CUDA_CHECK(cudaGetLastError());
+  return out;
+}
+
+Tensor log(const Tensor& t) {
+  Tensor c = t.contiguous();
+  Tensor out(t.shape(), DType::Float32, Device::CUDA);
+  const int block = 256;
+  const int grid = static_cast<int>((t.numel() + block - 1) / block);
+  log_kernel<<<grid, block>>>(c.data<float>(), out.data<float>(), t.numel());
   TIRAMISU_CUDA_CHECK(cudaGetLastError());
   return out;
 }

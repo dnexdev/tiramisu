@@ -10,8 +10,12 @@ void assert_same_device(const Tensor& a, const Tensor& b);
 
 Tensor matmul(const Tensor& a, const Tensor& b);
 Tensor add(const Tensor& a, const Tensor& b);
+Tensor sub(const Tensor& a, const Tensor& b);
 Tensor mul(const Tensor& a, const Tensor& b);
+Tensor div(const Tensor& a, const Tensor& b);
 Tensor neg(const Tensor& t);
+Tensor exp(const Tensor& t);
+Tensor log(const Tensor& t);
 Tensor gelu(const Tensor& t);
 Tensor relu(const Tensor& t);
 Tensor softmax(const Tensor& x);

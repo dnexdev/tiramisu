@@ -105,6 +105,11 @@ Tensor add(const Tensor& a, const Tensor& b) {
                                         [](float x, float y) { return x + y; });
 }
 Tensor sub(const Tensor& a, const Tensor& b) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (a.device() == Device::CUDA || b.device() == Device::CUDA) {
+    return cuda::sub(a, b);
+  }
+#endif
   return tiramisu::ops::apply_binary_op(a, b,
                                         [](float x, float y) { return x - y; });
 }
@@ -118,6 +123,11 @@ Tensor mul(const Tensor& a, const Tensor& b) {
                                         [](float x, float y) { return x * y; });
 }
 Tensor div(const Tensor& a, const Tensor& b) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (a.device() == Device::CUDA || b.device() == Device::CUDA) {
+    return cuda::div(a, b);
+  }
+#endif
   return tiramisu::ops::apply_binary_op(a, b,
                                         [](float x, float y) { return x / y; });
 }
@@ -131,9 +141,19 @@ Tensor neg(const Tensor& t) {
   return tiramisu::ops::apply_unary_op(t, [](float x) { return -x; });
 }
 Tensor exp(const Tensor& t) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (t.device() == Device::CUDA) {
+    return cuda::exp(t);
+  }
+#endif
   return tiramisu::ops::apply_unary_op(t, [](float x) { return std::exp(x); });
 }
 Tensor log(const Tensor& t) {
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (t.device() == Device::CUDA) {
+    return cuda::log(t);
+  }
+#endif
   return tiramisu::ops::apply_unary_op(t, [](float x) { return std::log(x); });
 }
 Tensor relu(const Tensor& t) {

@@ -29,6 +29,14 @@ WORKDIR /app
 COPY --from=builder /app/build/examples/train_shakespeare ./build/examples/train_shakespeare
 COPY --from=builder /app/checkpoints ./checkpoints
 
+# Corpus is gitignored locally; fetch the canonical Tiny Shakespeare text so
+# /generate can build the char vocab matching the shipped checkpoints.
+RUN mkdir -p data && apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL -o data/tiny_shakespeare.txt \
+      https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+    && apt-get purge -y curl && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY web/ ./web/
 
 RUN pip3 install --no-cache-dir --break-system-packages \

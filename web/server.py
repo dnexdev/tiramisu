@@ -3,6 +3,7 @@ tiramisu examples hub
 FastAPI backend for Shakespeare native fallback + static demos
 """
 
+import asyncio
 import os
 import re
 import subprocess
@@ -22,8 +23,10 @@ MNIST_WEIGHTS = ROOT / "checkpoints" / "mnist_mlp.bin"
 DATA = ROOT / "data" / "tiny_shakespeare.txt"
 PRESET = "10m"
 GENERATION_TIMEOUT = int(os.environ.get("GENERATION_TIMEOUT", "180"))
+GENERATION_CONCURRENCY = int(os.environ.get("GENERATION_CONCURRENCY", "2"))
 
 app = FastAPI(title="tiramisu examples")
+_generate_sem = asyncio.Semaphore(GENERATION_CONCURRENCY)
 
 
 class GenerateRequest(BaseModel):
@@ -88,7 +91,10 @@ def call_binary(prompt: str, temperature: float, max_chars: int) -> str:
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(req: GenerateRequest):
   try:
-    text = call_binary(req.prompt, req.temperature, req.max_chars)
+    async with _generate_sem:
+      text = await asyncio.to_thread(
+          call_binary, req.prompt, req.temperature, req.max_chars
+      )
   except (RuntimeError, subprocess.SubprocessError) as e:
     raise HTTPException(status_code=500, detail=str(e)) from e
   return GenerateResponse(text=text, prompt=req.prompt)

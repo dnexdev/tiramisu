@@ -308,6 +308,16 @@ Tensor embedding_backward(const Tensor& grad_output, const Tensor& indices,
                           int64_t vocab, int64_t dim) {
   Tensor g = grad_output.contiguous();
   Tensor idx = indices.contiguous();
+  Tensor host_idx = idx.device() == Device::CPU ? idx : idx.to(Device::CPU);
+  const int64_t n = host_idx.numel();
+  const float* host_data = host_idx.data<float>();
+  for (int64_t i = 0; i < n; ++i) {
+    const int64_t token = static_cast<int64_t>(host_data[i]);
+    if (token < 0 || token >= vocab) {
+      throw std::out_of_range(
+          "embedding backward: token index out of range");
+    }
+  }
   const int64_t batch = indices.shape()[0];
   const int64_t seq = indices.shape()[1];
   Tensor grad_w({vocab, dim}, DType::Float32, Device::CUDA);

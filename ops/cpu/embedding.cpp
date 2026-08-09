@@ -1,5 +1,6 @@
 #include "tiramisu/ops/embedding.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 #include "tiramisu/core/device.hpp"
@@ -10,12 +11,9 @@
 
 namespace tiramisu::ops {
 
-Tensor embedding(const Tensor& weight, const Tensor& indices) {
-#ifdef TIRAMISU_CUDA_ENABLED
-  if (weight.device() == Device::CUDA || indices.device() == Device::CUDA) {
-    return cuda::embedding(weight, indices);
-  }
-#endif
+namespace {
+
+void validate_embedding_args(const Tensor& weight, const Tensor& indices) {
   if (weight.shape().size() != 2) {
     throw std::invalid_argument("embedding: weight must be 2D");
   }
@@ -23,9 +21,34 @@ Tensor embedding(const Tensor& weight, const Tensor& indices) {
     throw std::invalid_argument("embedding: indices must be 2D");
   }
 
+  const int64_t vocab = weight.shape()[0];
+  Tensor c_indices = indices.contiguous();
+  if (c_indices.device() != Device::CPU) {
+    c_indices = c_indices.to(Device::CPU);
+  }
+  const float* idx = c_indices.data<float>();
+  const int64_t n = c_indices.numel();
+  for (int64_t i = 0; i < n; ++i) {
+    const int64_t token = static_cast<int64_t>(idx[i]);
+    if (token < 0 || token >= vocab) {
+      throw std::out_of_range("embedding: token index out of range");
+    }
+  }
+}
+
+}  // namespace
+
+Tensor embedding(const Tensor& weight, const Tensor& indices) {
+  validate_embedding_args(weight, indices);
+
+#ifdef TIRAMISU_CUDA_ENABLED
+  if (weight.device() == Device::CUDA || indices.device() == Device::CUDA) {
+    return cuda::embedding(weight, indices);
+  }
+#endif
+
   const int64_t batch = indices.shape()[0];
   const int64_t seq = indices.shape()[1];
-  const int64_t vocab = weight.shape()[0];
   const int64_t dim = weight.shape()[1];
 
   Tensor c_indices = indices.contiguous();
@@ -37,9 +60,6 @@ Tensor embedding(const Tensor& weight, const Tensor& indices) {
   for (int64_t b = 0; b < batch; b++) {
     for (int64_t s = 0; s < seq; s++) {
       const int64_t token = static_cast<int64_t>(idx[b * seq + s]);
-      if (token < 0 || token >= vocab) {
-        throw std::out_of_range("embedding: token index out of range");
-      }
       const float* row = w + token * dim;
       float* out_row = o + (b * seq + s) * dim;
       std::copy(row, row + dim, out_row);

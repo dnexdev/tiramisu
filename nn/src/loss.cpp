@@ -35,6 +35,16 @@ Tensor cross_entropy_loss(const Tensor& logits, const Tensor& targets) {
   if (logits.device() == Device::CUDA) {
     Tensor softmax_buf({batch, C}, DType::Float32, Device::CUDA);
     Tensor c_targets = targets.contiguous();
+    Tensor host_targets =
+        c_targets.device() == Device::CPU ? c_targets : c_targets.to(Device::CPU);
+    for (int64_t i = 0; i < batch; ++i) {
+      const int64_t target =
+          static_cast<int64_t>(host_targets.data<float>()[i]);
+      if (target < 0 || target >= C) {
+        throw std::out_of_range(
+            "cross_entropy_loss: target index out of range [0, C)");
+      }
+    }
     Tensor loss =
         ops::cuda::cross_entropy_forward(logits, c_targets, softmax_buf);
 

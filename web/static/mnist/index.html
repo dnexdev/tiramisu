@@ -18,19 +18,19 @@
       on MNIST — draw on the canvas and classify with WASM inference in the browser.
     </p>
     <div class="stats">
-      <div class="stat-item">
+      <div class="stat-item aero-panel">
         <span class="stat-value">784→128→10</span>
         <span class="stat-label">architecture</span>
       </div>
-      <div class="stat-item">
+      <div class="stat-item aero-panel">
         <span class="stat-value">~96%</span>
         <span class="stat-label">test accuracy</span>
       </div>
-      <div class="stat-item">
+      <div class="stat-item aero-panel">
         <span class="stat-value">ReLU</span>
         <span class="stat-label">activation</span>
       </div>
-      <div class="stat-item">
+      <div class="stat-item aero-panel">
         <span class="stat-value">WASM</span>
         <span class="stat-label">runs in browser</span>
       </div>
@@ -39,20 +39,20 @@
 
   <main>
     <div class="mnist-layout">
-      <div class="canvas-wrap">
+      <div class="canvas-wrap aero-panel">
         <canvas id="draw-canvas" width="280" height="280" aria-label="Draw a digit"></canvas>
         <p class="canvas-hint">Draw a digit (0–9) with mouse or touch</p>
       </div>
 
       <div class="mnist-side">
-        <div class="controls mnist-controls">
+        <div class="controls mnist-controls aero-panel">
           <div class="btn-row">
-            <button class="btn-primary" id="predict-btn">Predict</button>
+            <button class="btn-primary aero-btn" id="predict-btn">Predict</button>
             <button class="btn-ghost" id="clear-canvas-btn">Clear</button>
           </div>
         </div>
 
-        <div class="prediction" id="prediction">
+        <div class="prediction aero-panel" id="prediction">
           <span class="prediction-label">Prediction</span>
           <span class="prediction-digit" id="prediction-digit">—</span>
           <span class="prediction-status" id="prediction-status">ready</span>
@@ -92,7 +92,7 @@
         </div>
       </div>
 
-      <div class="viz-panel">
+      <div class="viz-panel aero-panel">
         <div class="viz-panel-header">
           <span>Hidden layer (128 ReLU outputs)</span>
           <span class="viz-panel-hint">brighter = stronger activation</span>
@@ -100,7 +100,7 @@
         <div class="hidden-strip" id="hidden-strip" aria-label="Hidden layer activations"></div>
       </div>
 
-      <div class="viz-panel">
+      <div class="viz-panel aero-panel">
         <div class="viz-panel-header">
           <span>Output logits (pre-argmax scores)</span>
           <span class="viz-panel-hint">tallest bar wins</span>

@@ -100,7 +100,7 @@ function clearViz() {
 }
 
 function clearCanvas() {
-  ctx.fillStyle = "#000000";
+  ctx.fillStyle = "#d4ecff";
   ctx.fillRect(0, 0, DISPLAY, DISPLAY);
   digitEl.textContent = "—";
   statusEl.textContent = "ready";
@@ -119,7 +119,7 @@ function canvasPos(event) {
 }
 
 function drawDot(x, y) {
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = "#000000";
   ctx.beginPath();
   ctx.arc(x, y, BRUSH, 0, Math.PI * 2);
   ctx.fill();

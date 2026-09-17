@@ -7,8 +7,6 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32" />
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="../style.css" />
 </head>
 <body>
@@ -24,19 +22,19 @@
       the whole model fits in an 11 MB download.
     </p>
     <div class="stats">
-      <div class="stat-item">
+      <div class="stat-item aero-panel">
         <span class="stat-value">10.8M</span>
         <span class="stat-label">parameters</span>
       </div>
-      <div class="stat-item">
+      <div class="stat-item aero-panel">
         <span class="stat-value">40 epochs</span>
         <span class="stat-label">trained on a T4</span>
       </div>
-      <div class="stat-item">
+      <div class="stat-item aero-panel">
         <span class="stat-value">val 1.87</span>
         <span class="stat-label">loss</span>
       </div>
-      <div class="stat-item">
+      <div class="stat-item aero-panel">
         <span class="stat-value">int8 · WASM</span>
         <span class="stat-label">runs in browser</span>
       </div>
@@ -44,7 +42,7 @@
   </header>
 
   <main>
-    <div class="controls">
+    <div class="controls aero-panel">
       <div class="field">
         <label for="prompt">Prompt</label>
         <textarea id="prompt" rows="3" spellcheck="false">First Citizen:
@@ -53,7 +51,7 @@
       </div>
 
       <div class="field">
-        <label>Temperature <span style="color:var(--ink-dim);font-size:11px;font-weight:400;letter-spacing:0">&mdash; lower = safer, higher = wilder</span></label>
+        <label>Temperature <span style="color:var(--text-dim);font-size:11px;font-weight:400;letter-spacing:0">&mdash; lower = safer, higher = wilder</span></label>
         <div class="slider-row">
           <input type="range" id="temperature" min="0.1" max="1.5" step="0.05" value="0.85" />
           <span class="slider-val" id="temp-val">0.85</span>
@@ -70,12 +68,12 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn-primary" id="generate-btn">Generate</button>
+        <button class="btn-primary aero-btn" id="generate-btn">Generate</button>
         <button class="btn-ghost" id="clear-btn">Clear</button>
       </div>
     </div>
 
-    <div class="output-wrap">
+    <div class="output-wrap aero-panel">
       <div class="output-header">
         <span class="output-label">Output</span>
         <span class="output-status" id="status">ready</span>

@@ -152,7 +152,8 @@ function samplePixels() {
   const { data } = offCtx.getImageData(0, 0, MODEL, MODEL);
   const pixels = new Float32Array(MODEL * MODEL);
   for (let i = 0; i < MODEL * MODEL; i++) {
-    const gray = data[i * 4];
+    // Canvas draws a dark stroke on a light background; MNIST expects the opposite. Invert so bg -> -1, stroke -> +1.
+    const gray = 255 - data[i * 4];
     pixels[i] = (gray / 255 - 0.5) / 0.5;
   }
   return pixels;

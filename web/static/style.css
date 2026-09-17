@@ -20,8 +20,8 @@
   --error: #c43c3c;
   --radius-panel: 8px;
   --radius-btn: 20px;
-  --font-ui: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  --font-mono: Consolas, 'Courier New', monospace;
+  --font-ui: 'Comic Sans MS', 'Comic Sans', 'Comic Neue', cursive;
+  --font-mono: 'Comic Sans MS', 'Comic Sans', 'Comic Neue', cursive;
 }
 
 html, body {

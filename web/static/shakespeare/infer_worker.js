@@ -101,9 +101,9 @@ self.onmessage = async (event) => {
   }
 
   try {
-    self.postMessage({ type: "status", text: "loading model..." });
+    self.postMessage({ type: "status", text: "Loading model..." });
     const Module = await ensureModel();
-    self.postMessage({ type: "status", text: "generating..." });
+    self.postMessage({ type: "status", text: "Generating..." });
     await streamGenerate(Module, msg);
   } catch (error) {
     self.postMessage({

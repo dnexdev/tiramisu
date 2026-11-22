@@ -3,51 +3,48 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tiramisu — examples</title>
+  <meta name="description" content="Browser demos for tiramisu, a machine learning framework written from scratch in C++." />
+  <title>tiramisu | browser demos</title>
   <link rel="icon" href="/favicon.ico" sizes="32x32" />
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-<div class="page hub-page">
-
-  <header>
-    <p class="eyebrow">tiramisu · examples</p>
-    <h1>ML demos, <em>from scratch</em> in C++</h1>
-    <p class="subtitle">
-      Interactive browser demos powered by WebAssembly — no PyTorch, no Python runtime.
-      Built on the
-      <a href="https://github.com/dnexdev/tiramisu" target="_blank">tiramisu</a>
-      framework.
-    </p>
+<body class="hub-page">
+  <header class="site-header">
+    <div class="shell site-header-inner">
+      <a class="brand-link" href="./" aria-label="tiramisu demos home">
+        <img src="wordmark.png" width="210" height="55" alt="tiramisu" />
+      </a>
+      <a class="header-link" href="https://github.com/dnexdev/tiramisu">GitHub</a>
+    </div>
   </header>
 
-  <main>
-    <div class="example-grid">
-      <a class="example-card aero-panel" href="shakespeare/">
-        <span class="example-tag">transformer</span>
-        <h2>Shakespeare GPT</h2>
-        <p>10M-parameter char-level transformer trained on the complete works, quantized to int8 for browser inference. Generate text with KV-cache in WASM.</p>
-        <span class="example-link">Open demo →</span>
+  <main class="shell hub-main">
+    <section class="hub-intro" aria-labelledby="hub-title">
+      <h1 id="hub-title">Machine learning from scratch in C++</h1>
+      <p>Two small models built with tiramisu, running in your browser through WebAssembly.</p>
+      <pre class="install-command"><code>pip install tiramisu-ml</code></pre>
+    </section>
+
+    <nav class="demo-list" aria-label="Browser demos">
+      <a class="demo-link demo-link-shakespeare" href="shakespeare/">
+        <h2>Shakespeare</h2>
+        <p>Continue a prompt with a 10.8M-parameter character model trained on Shakespeare’s plays and poems.</p>
       </a>
-      <a class="example-card aero-panel" href="mnist/">
-        <span class="example-tag">classifier</span>
-        <h2>MNIST digits</h2>
-        <p>784→128→ReLU→10 MLP trained on MNIST. Draw a digit on the canvas and classify it with WASM inference.</p>
-        <span class="example-link">Open demo →</span>
+      <a class="demo-link demo-link-mnist" href="mnist/">
+        <h2>Handwritten digits</h2>
+        <p>Draw a digit and watch the 128 hidden units that decide what it is.</p>
       </a>
-    </div>
+    </nav>
   </main>
 
-  <footer>
-    <span class="footer-left">tiramisu — built from scratch in C++</span>
-    <div class="footer-links">
-      <a href="https://github.com/dnexdev/tiramisu" target="_blank">GitHub</a>
-      <a href="https://dnex.dev/llms1/" target="_blank">Blog</a>
-    </div>
+  <footer class="site-footer shell">
+    <a href="https://github.com/dnexdev/tiramisu">GitHub</a>
+    <a href="https://dnex.dev/llms1/">Read the write-up</a>
   </footer>
-
-</div>
 </body>
 </html>

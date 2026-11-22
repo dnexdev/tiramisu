@@ -53,7 +53,7 @@ jobs:
       - name: Assemble static site
         run: |
           mkdir -p site/shakespeare site/mnist site/shakespeare/assets site/mnist/assets
-          cp web/static/index.html web/static/style.css site/
+          cp web/static/index.html web/static/style.css web/static/wordmark.png site/
           cp web/static/favicon.ico web/static/favicon.png web/static/apple-touch-icon.png site/
           cp -r web/static/shakespeare/* site/shakespeare/
           cp -r web/static/mnist/* site/mnist/
@@ -65,6 +65,7 @@ jobs:
           chmod -R a+rX site
           test -s site/favicon.ico
           test -s site/favicon.png
+          test -s site/wordmark.png
           test -s site/shakespeare/assets/shakespeare_10m_int8.ckpt
           test -s site/mnist/assets/mnist_mlp.bin
           du -sh site site/shakespeare/assets site/mnist/assets

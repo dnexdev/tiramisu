@@ -25,11 +25,11 @@ let worker = null;
 let typeTimer = null;
 let streamCursor = null;
 
-PROMPTS.forEach(p => {
+PROMPTS.forEach((prompt) => {
   const chip = document.createElement("button");
   chip.className = "prompt-chip";
-  chip.textContent = p.replace(/\n/g, "↵");
-  chip.addEventListener("click", () => { promptEl.value = p; });
+  chip.textContent = prompt.trim();
+  chip.addEventListener("click", () => { promptEl.value = prompt; });
   chipsEl.appendChild(chip);
 });
 
@@ -44,7 +44,8 @@ function estimateSeconds(chars) {
 function updateTimeHint() {
   const chars = parseInt(charsEl.value, 10);
   const secs = estimateSeconds(chars);
-  timeHintEl.textContent = `~${secs}s in browser (~1s per 50 chars; longer runs slow down)`;
+  const unit = secs === 1 ? "second" : "seconds";
+  timeHintEl.textContent = `About ${secs} ${unit} in the browser.`;
 }
 
 tempEl.addEventListener("input", () => { tempVal.textContent = (+tempEl.value).toFixed(2); });
@@ -148,7 +149,7 @@ function generateViaWasm(prompt, temperature, max_chars) {
         return;
       }
       if (msg.type === "token") {
-        setStatus("generating...", "generating");
+        setStatus("Generating...", "generating");
         appendStreamChar(msg.ch);
         return;
       }
@@ -187,25 +188,25 @@ genBtn.addEventListener("click", async () => {
   outputEl.textContent = "";
 
   if (USE_SERVER) {
-    setStatus("generating...", "generating");
+    setStatus("Generating...", "generating");
   } else {
     beginStreamOutput();
-    setStatus("loading model...", "generating");
+    setStatus("Loading model...", "generating");
   }
 
   try {
     if (USE_SERVER) {
       const text = await generateViaServer(prompt, temperature, max_chars);
-      setStatus("typing...", "generating");
-      typewrite(outputEl, text, () => setStatus("done", "done"));
+      setStatus("Typing...", "generating");
+      typewrite(outputEl, text, () => setStatus("Done", "done"));
     } else {
       await generateViaWasm(prompt, temperature, max_chars);
-      setStatus("done", "done");
+      setStatus("Done", "done");
     }
   } catch (e) {
     outputEl.classList.add("empty");
     outputEl.textContent = "Error: " + e.message;
-    setStatus("error", "error");
+    setStatus("Error", "error");
   } finally {
     genBtn.disabled = false;
   }
@@ -215,6 +216,6 @@ clearBtn.addEventListener("click", () => {
   clearInterval(typeTimer);
   finishStreamOutput();
   outputEl.classList.add("empty");
-  outputEl.textContent = "Press generate to speak with the Bard.";
-  setStatus("ready", "");
+  outputEl.textContent = "Generated text will appear here.";
+  setStatus("Ready", "");
 });

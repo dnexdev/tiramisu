@@ -3,125 +3,80 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tiramisu — MNIST</title>
+  <meta name="description" content="Draw a handwritten digit and inspect a tiramisu MLP prediction in your browser." />
+  <title>tiramisu | handwritten digits</title>
   <link rel="icon" href="/favicon.ico" sizes="32x32" />
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="../style.css" />
 </head>
 <body>
-<div class="page">
-
-  <header>
-    <p class="eyebrow"><a class="back-link" href="../">← examples</a> · MNIST classifier</p>
-    <h1>Draw a <em>digit</em></h1>
-    <p class="subtitle">
-      A tiny MLP trained in
-      <a href="https://github.com/dnexdev/tiramisu" target="_blank">tiramisu</a>
-      on MNIST — draw on the canvas and classify with WASM inference in the browser.
-    </p>
-    <div class="stats">
-      <div class="stat-item aero-panel">
-        <span class="stat-value">784→128→10</span>
-        <span class="stat-label">architecture</span>
-      </div>
-      <div class="stat-item aero-panel">
-        <span class="stat-value">~96%</span>
-        <span class="stat-label">test accuracy</span>
-      </div>
-      <div class="stat-item aero-panel">
-        <span class="stat-value">ReLU</span>
-        <span class="stat-label">activation</span>
-      </div>
-      <div class="stat-item aero-panel">
-        <span class="stat-value">WASM</span>
-        <span class="stat-label">runs in browser</span>
-      </div>
+  <header class="site-header">
+    <div class="shell site-header-inner">
+      <a class="brand-link" href="../" aria-label="tiramisu demos home">
+        <img src="../wordmark.png" width="210" height="55" alt="tiramisu" />
+      </a>
+      <a class="header-link" href="https://github.com/dnexdev/tiramisu">GitHub</a>
     </div>
   </header>
 
-  <main>
-    <div class="mnist-layout">
-      <div class="canvas-wrap aero-panel">
-        <canvas id="draw-canvas" width="280" height="280" aria-label="Draw a digit"></canvas>
-        <p class="canvas-hint">Draw a digit (0–9) with mouse or touch</p>
-      </div>
-
-      <div class="mnist-side">
-        <div class="controls mnist-controls aero-panel">
-          <div class="btn-row">
-            <button class="btn-primary aero-btn" id="predict-btn">Predict</button>
-            <button class="btn-ghost" id="clear-canvas-btn">Clear</button>
-          </div>
-        </div>
-
-        <div class="prediction aero-panel" id="prediction">
-          <span class="prediction-label">Prediction</span>
-          <span class="prediction-digit" id="prediction-digit">—</span>
-          <span class="prediction-status" id="prediction-status">ready</span>
-        </div>
-      </div>
+  <main class="shell demo-page">
+    <div class="page-intro">
+      <h1>Handwritten digits</h1>
+      <p>Draw a digit and inspect each stage of its prediction.</p>
     </div>
 
-    <section class="network-viz" id="network-viz" hidden>
-      <h2 class="viz-title">How it decides</h2>
-      <p class="viz-subtitle">Live activations from the WASM forward pass — not a diagram of weights, but what each layer outputs for your drawing.</p>
-
-      <div class="mlp-flow" aria-hidden="true">
-        <div class="mlp-layer mlp-layer-input">
-          <span class="mlp-layer-name">Input</span>
-          <span class="mlp-layer-dim">28×28</span>
-          <span class="mlp-layer-note">flatten → 784</span>
-        </div>
-        <span class="mlp-arrow">→</span>
-        <div class="mlp-layer mlp-layer-active" id="viz-layer-linear1">
-          <span class="mlp-layer-name">Linear</span>
-          <span class="mlp-layer-dim">784 → 128</span>
-        </div>
-        <span class="mlp-arrow">→</span>
-        <div class="mlp-layer mlp-layer-active" id="viz-layer-relu">
-          <span class="mlp-layer-name">ReLU</span>
-          <span class="mlp-layer-dim">128</span>
-        </div>
-        <span class="mlp-arrow">→</span>
-        <div class="mlp-layer mlp-layer-active" id="viz-layer-linear2">
-          <span class="mlp-layer-name">Linear</span>
-          <span class="mlp-layer-dim">128 → 10</span>
-        </div>
-        <span class="mlp-arrow">→</span>
-        <div class="mlp-layer mlp-layer-output">
-          <span class="mlp-layer-name">Argmax</span>
-          <span class="mlp-layer-dim">digit</span>
+    <section class="mnist-tool" aria-label="Handwritten digit classifier">
+      <div class="drawing-panel">
+        <canvas id="draw-canvas" width="320" height="320" tabindex="0" aria-label="Draw a digit from zero to nine"></canvas>
+        <p class="canvas-hint">Draw with your mouse or finger.</p>
+        <div class="btn-row canvas-actions">
+          <button class="btn-primary" id="predict-btn">Predict</button>
+          <button class="btn-secondary" id="clear-canvas-btn">Clear</button>
         </div>
       </div>
 
-      <div class="viz-panel aero-panel">
-        <div class="viz-panel-header">
-          <span>Hidden layer (128 ReLU outputs)</span>
-          <span class="viz-panel-hint">brighter = stronger activation</span>
-        </div>
-        <div class="hidden-strip" id="hidden-strip" aria-label="Hidden layer activations"></div>
-      </div>
+      <div class="result-area">
+        <section class="prediction" aria-labelledby="prediction-heading">
+          <h2 id="prediction-heading">Prediction</h2>
+          <span class="prediction-digit is-empty" id="prediction-digit">?</span>
+          <span class="prediction-status" id="prediction-status" role="status">Ready</span>
+        </section>
 
-      <div class="viz-panel aero-panel">
-        <div class="viz-panel-header">
-          <span>Output logits (pre-argmax scores)</span>
-          <span class="viz-panel-hint">tallest bar wins</span>
+        <div class="network-viz" id="network-viz">
+          <section class="logits-view" aria-labelledby="logits-heading">
+            <h2 id="logits-heading">Probabilities</h2>
+            <div class="logits-chart" id="logits-chart" aria-label="Softmax probability for each digit"></div>
+          </section>
+
+          <section class="hidden-view" aria-labelledby="hidden-heading">
+            <div class="hidden-heading-row">
+              <h2 id="hidden-heading">Hidden layer</h2>
+              <p>128 ReLU activations</p>
+            </div>
+            <div class="hidden-strip" id="hidden-strip" aria-label="Hidden layer activations"></div>
+          </section>
+
+          <p class="architecture">28×28 pixels flattened to 784, then Linear to 128, ReLU, and Linear to 10.</p>
         </div>
-        <div class="logits-chart" id="logits-chart" aria-label="Output logits per digit"></div>
       </div>
+    </section>
+
+    <section class="about-model" aria-labelledby="about-mnist">
+      <h2 id="about-mnist">About this model</h2>
+      <p>A two-layer perceptron with 128 ReLU hidden units, trained on MNIST with Adam at batch size 64. It gets 95.9% of the test set right.</p>
+      <p>The bars and squares above are read from WebAssembly memory after each prediction.</p>
     </section>
   </main>
 
-  <footer>
-    <span class="footer-left">tiramisu — built from scratch in C++</span>
-    <div class="footer-links">
-      <a href="https://github.com/dnexdev/tiramisu" target="_blank">GitHub</a>
-      <a href="https://dnex.dev/llms1/" target="_blank">Blog</a>
-    </div>
+  <footer class="site-footer shell">
+    <a href="https://github.com/dnexdev/tiramisu">GitHub</a>
+    <a href="https://dnex.dev/llms1/">Read the write-up</a>
   </footer>
 
-</div>
-<script type="module" src="mnist.js"></script>
+  <script type="module" src="mnist.js"></script>
 </body>
 </html>

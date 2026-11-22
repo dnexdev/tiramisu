@@ -3,94 +3,86 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tiramisu — Shakespeare</title>
+  <meta name="description" content="Generate Shakespearean text in your browser with tiramisu and WebAssembly." />
+  <title>tiramisu | Shakespeare</title>
   <link rel="icon" href="/favicon.ico" sizes="32x32" />
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="../style.css" />
 </head>
 <body>
-<div class="page">
-
-  <header>
-    <p class="eyebrow"><a class="back-link" href="../">← examples</a> · Shakespeare GPT</p>
-    <h1>What light through<br/><em>yonder window</em> breaks?</h1>
-    <p class="subtitle">
-      A 10 million parameter transformer, trained from scratch in a
-      <a href="https://github.com/dnexdev/tiramisu" target="_blank">hand-written C++ ML framework</a>,
-      no PyTorch, on the complete works of Shakespeare. Quantized to int8 so
-      the whole model fits in an 11 MB download.
-    </p>
-    <div class="stats">
-      <div class="stat-item aero-panel">
-        <span class="stat-value">10.8M</span>
-        <span class="stat-label">parameters</span>
-      </div>
-      <div class="stat-item aero-panel">
-        <span class="stat-value">40 epochs</span>
-        <span class="stat-label">trained on a T4</span>
-      </div>
-      <div class="stat-item aero-panel">
-        <span class="stat-value">val 1.87</span>
-        <span class="stat-label">loss</span>
-      </div>
-      <div class="stat-item aero-panel">
-        <span class="stat-value">int8 · WASM</span>
-        <span class="stat-label">runs in browser</span>
-      </div>
+  <header class="site-header">
+    <div class="shell site-header-inner">
+      <a class="brand-link" href="../" aria-label="tiramisu demos home">
+        <img src="../wordmark.png" width="210" height="55" alt="tiramisu" />
+      </a>
+      <a class="header-link" href="https://github.com/dnexdev/tiramisu">GitHub</a>
     </div>
   </header>
 
-  <main>
-    <div class="controls aero-panel">
-      <div class="field">
-        <label for="prompt">Prompt</label>
-        <textarea id="prompt" rows="3" spellcheck="false">First Citizen:
+  <main class="shell demo-page">
+    <div class="page-intro">
+      <h1>Shakespeare</h1>
+      <p>Generate a scene with a character-level model running in your browser.</p>
+    </div>
+
+    <section class="shakespeare-tool" aria-label="Shakespeare text generator">
+      <div class="generator-controls">
+        <div class="field">
+          <label for="prompt">Prompt</label>
+          <textarea id="prompt" rows="3" spellcheck="false">First Citizen:
 </textarea>
-        <div class="prompts" id="prompt-chips"></div>
-      </div>
+          <div class="prompts" id="prompt-chips" aria-label="Preset prompts"><span class="prompts-label">Try</span></div>
+        </div>
 
-      <div class="field">
-        <label>Temperature <span style="color:var(--text-dim);font-size:11px;font-weight:400;letter-spacing:0">&mdash; lower = safer, higher = wilder</span></label>
-        <div class="slider-row">
+        <div class="field">
+          <label class="label-with-value" for="temperature">
+            <span>Temperature</span>
+            <span class="slider-val" id="temp-val">0.85</span>
+          </label>
           <input type="range" id="temperature" min="0.1" max="1.5" step="0.05" value="0.85" />
-          <span class="slider-val" id="temp-val">0.85</span>
+          <p class="field-hint">Lower values pick safer characters; higher values wander.</p>
         </div>
-      </div>
 
-      <div class="field">
-        <label>Length</label>
-        <div class="slider-row">
+        <div class="field">
+          <label class="label-with-value" for="max-chars">
+            <span>Length</span>
+            <span class="slider-val" id="chars-val">150</span>
+          </label>
           <input type="range" id="max-chars" min="50" max="800" step="50" value="150" />
-          <span class="slider-val" id="chars-val">150</span>
+          <p class="field-hint" id="time-hint">About 5 seconds in the browser.</p>
         </div>
-        <p class="time-hint" id="time-hint">10M params in the browser aren't fast — expect several seconds for short samples, more for longer ones.</p>
+
+        <div class="btn-row">
+          <button class="btn-primary" id="generate-btn">Generate</button>
+          <button class="btn-secondary" id="clear-btn">Clear</button>
+        </div>
       </div>
 
-      <div class="btn-row">
-        <button class="btn-primary aero-btn" id="generate-btn">Generate</button>
-        <button class="btn-ghost" id="clear-btn">Clear</button>
+      <div class="output-wrap">
+        <div class="output-header">
+          <h2>Generated text</h2>
+          <span class="output-status" id="status" role="status">Ready</span>
+        </div>
+        <div id="output-text" class="empty">Generated text will appear here.</div>
       </div>
-    </div>
+    </section>
 
-    <div class="output-wrap aero-panel">
-      <div class="output-header">
-        <span class="output-label">Output</span>
-        <span class="output-status" id="status">ready</span>
-      </div>
-      <div id="output-text" class="empty">Press generate to speak with the Bard.</div>
-    </div>
+    <section class="about-model" aria-labelledby="about-shakespeare">
+      <h2 id="about-shakespeare">About this model</h2>
+      <p>This 10.8M-parameter character-level transformer was trained for 40 epochs on a single T4 using the complete works of Shakespeare. Its validation loss reached 1.87.</p>
+      <p>The int8 checkpoint is about 11 MB. Generation uses a KV cache and runs in WebAssembly in this browser.</p>
+    </section>
   </main>
 
-  <footer>
-    <span class="footer-left">tiramisu — built from scratch in C++</span>
-    <div class="footer-links">
-      <a href="https://github.com/dnexdev/tiramisu" target="_blank">GitHub</a>
-      <a href="https://dnex.dev/llms1/" target="_blank">Blog</a>
-    </div>
+  <footer class="site-footer shell">
+    <a href="https://github.com/dnexdev/tiramisu">GitHub</a>
+    <a href="https://dnex.dev/llms1/">Read the write-up</a>
   </footer>
 
-</div>
-<script type="module" src="main.js"></script>
+  <script type="module" src="main.js"></script>
 </body>
 </html>

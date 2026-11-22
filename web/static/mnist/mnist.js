@@ -48,8 +48,8 @@ function ensureVizDom() {
       const label = document.createElement("span");
       label.className = "logit-label";
       label.textContent = String(i);
-      col.appendChild(bar);
       col.appendChild(label);
+      col.appendChild(bar);
       logitsChart.appendChild(col);
       logitBars.push({ col, fill, label });
     }
@@ -75,35 +75,31 @@ function renderNetworkViz(digit, logits, hidden) {
   });
 
   const probs = softmax(logits);
-  const maxLogit = Math.max(...logits);
-  const minLogit = Math.min(...logits);
-  const span = Math.max(maxLogit - minLogit, 1e-6);
-
   logitBars.forEach((bar, i) => {
-    const height = ((logits[i] - minLogit) / span) * 100;
-    bar.fill.style.height = `${height}%`;
+    bar.fill.style.transform = `scaleX(${probs[i]})`;
     bar.col.classList.toggle("winner", i === digit);
-    bar.label.title = `logit ${logits[i].toFixed(2)} · ${(probs[i] * 100).toFixed(1)}%`;
+    bar.label.title = `logit ${logits[i].toFixed(2)}, ${(probs[i] * 100).toFixed(1)}%`;
   });
 }
 
 function clearViz() {
-  networkViz.hidden = true;
+  ensureVizDom();
   hiddenCells.forEach((cell) => {
     cell.style.opacity = "0.08";
   });
   logitBars.forEach((bar) => {
-    bar.fill.style.height = "0%";
+    bar.fill.style.transform = "scaleX(0)";
     bar.col.classList.remove("winner");
     bar.label.title = "";
   });
 }
 
 function clearCanvas() {
-  ctx.fillStyle = "#d4ecff";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, DISPLAY, DISPLAY);
-  digitEl.textContent = "—";
-  statusEl.textContent = "ready";
+  digitEl.textContent = "?";
+  digitEl.classList.add("is-empty");
+  statusEl.textContent = "Ready";
   statusEl.className = "prediction-status";
   clearViz();
 }
@@ -175,7 +171,7 @@ clearBtn.addEventListener("click", clearCanvas);
 
 predictBtn.addEventListener("click", () => {
   predictBtn.disabled = true;
-  setStatus("loading...", "generating");
+  setStatus("Loading...", "generating");
 
   const w = getWorker();
   const onMessage = (event) => {
@@ -194,8 +190,9 @@ predictBtn.addEventListener("click", () => {
     if (msg.type === "result") {
       w.removeEventListener("message", onMessage);
       digitEl.textContent = String(msg.digit);
+      digitEl.classList.remove("is-empty");
       renderNetworkViz(msg.digit, msg.logits, msg.hidden);
-      setStatus("done", "done");
+      setStatus("Done", "done");
       predictBtn.disabled = false;
     }
   };

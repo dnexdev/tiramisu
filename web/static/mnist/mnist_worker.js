@@ -61,9 +61,9 @@ self.onmessage = async (event) => {
   }
 
   try {
-    self.postMessage({ type: "status", text: "loading model..." });
+    self.postMessage({ type: "status", text: "Loading model..." });
     const Module = await ensureModel();
-    self.postMessage({ type: "status", text: "predicting..." });
+    self.postMessage({ type: "status", text: "Predicting..." });
 
     const pixels = new Float32Array(msg.pixels);
     const pixelPtr = Module._malloc(pixels.length * pixels.BYTES_PER_ELEMENT);

@@ -68,13 +68,12 @@
     <section class="about-model" aria-labelledby="about-mnist">
       <h2 id="about-mnist">About this model</h2>
       <p>A two-layer perceptron with 128 ReLU hidden units, trained on MNIST with Adam at batch size 64. It gets 95.9% of the test set right.</p>
-      <p>The bars and squares above are read from WebAssembly memory after each prediction.</p>
+      <p>Before it reaches the model, your drawing is scaled into a 20 pixel box and centred by its mass, the same way the MNIST digits were prepared. The bars and squares above are read from WebAssembly memory after each prediction.</p>
     </section>
   </main>
 
   <footer class="site-footer shell">
     <a href="https://github.com/dnexdev/tiramisu">GitHub</a>
-    <a href="https://dnex.dev/llms1/">Read the write-up</a>
   </footer>
 
   <script type="module" src="mnist.js"></script>

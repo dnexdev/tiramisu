@@ -10,9 +10,19 @@ const logitsChart = document.getElementById("logits-chart");
 
 const DISPLAY = canvas.width;
 const MODEL = 28;
-const BRUSH = 9;
+const BRUSH = 12;
+// MNIST digits were scaled into a 20px box inside the 28px frame and centred by
+// their centre of mass; strokes in that frame are about 2.5px wide.
+const BOX = 20;
+const STROKE = 2.5;
+const SUPERSAMPLE = 8;
 
 let drawing = false;
+let strokes = [];
+const modelCanvas = document.createElement("canvas");
+modelCanvas.width = MODEL * SUPERSAMPLE;
+modelCanvas.height = MODEL * SUPERSAMPLE;
+const modelCtx = modelCanvas.getContext("2d", { willReadFrequently: true });
 let worker = null;
 let hiddenCells = [];
 let logitBars = [];
@@ -97,6 +107,7 @@ function clearViz() {
 function clearCanvas() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, DISPLAY, DISPLAY);
+  strokes = [];
   digitEl.textContent = "?";
   digitEl.classList.add("is-empty");
   statusEl.textContent = "Ready";
@@ -108,30 +119,38 @@ function canvasPos(event) {
   const rect = canvas.getBoundingClientRect();
   const clientX = event.touches ? event.touches[0].clientX : event.clientX;
   const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+  const clamp = (v) => Math.min(DISPLAY, Math.max(0, v));
   return {
-    x: (clientX - rect.left) * (DISPLAY / rect.width),
-    y: (clientY - rect.top) * (DISPLAY / rect.height),
+    x: clamp((clientX - rect.left) * (DISPLAY / rect.width)),
+    y: clamp((clientY - rect.top) * (DISPLAY / rect.height)),
   };
-}
-
-function drawDot(x, y) {
-  ctx.fillStyle = "#000000";
-  ctx.beginPath();
-  ctx.arc(x, y, BRUSH, 0, Math.PI * 2);
-  ctx.fill();
 }
 
 function startDraw(event) {
   drawing = true;
-  const { x, y } = canvasPos(event);
-  drawDot(x, y);
+  const p = canvasPos(event);
+  strokes.push([p]);
+  ctx.fillStyle = "#000000";
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, BRUSH, 0, Math.PI * 2);
+  ctx.fill();
   event.preventDefault();
 }
 
 function moveDraw(event) {
   if (!drawing) return;
-  const { x, y } = canvasPos(event);
-  drawDot(x, y);
+  const p = canvasPos(event);
+  const stroke = strokes[strokes.length - 1];
+  const prev = stroke[stroke.length - 1];
+  stroke.push(p);
+  // Join to the previous point so fast strokes don't break into dots.
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = BRUSH * 2;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(prev.x, prev.y);
+  ctx.lineTo(p.x, p.y);
+  ctx.stroke();
   event.preventDefault();
 }
 
@@ -139,20 +158,75 @@ function endDraw() {
   drawing = false;
 }
 
-function samplePixels() {
-  const off = document.createElement("canvas");
-  off.width = MODEL;
-  off.height = MODEL;
-  const offCtx = off.getContext("2d");
-  offCtx.drawImage(canvas, 0, 0, MODEL, MODEL);
-  const { data } = offCtx.getImageData(0, 0, MODEL, MODEL);
-  const pixels = new Float32Array(MODEL * MODEL);
-  for (let i = 0; i < MODEL * MODEL; i++) {
-    // Canvas draws a dark stroke on a light background; MNIST expects the opposite. Invert so bg -> -1, stroke -> +1.
-    const gray = 255 - data[i * 4];
-    pixels[i] = (gray / 255 - 0.5) / 0.5;
+function resumeDraw(event) {
+  if (event.buttons & 1) startDraw(event);
+}
+
+// Draw the recorded strokes into the 28x28 frame: white ink on black, rendered
+// at 8x and box-averaged down. Returns ink in [0, 1] per pixel.
+function renderStrokes(scale, offsetX, offsetY) {
+  const size = MODEL * SUPERSAMPLE;
+  const at = (p) => [(p.x * scale + offsetX) * SUPERSAMPLE, (p.y * scale + offsetY) * SUPERSAMPLE];
+  modelCtx.fillStyle = "#000000";
+  modelCtx.fillRect(0, 0, size, size);
+  modelCtx.fillStyle = "#ffffff";
+  modelCtx.strokeStyle = "#ffffff";
+  modelCtx.lineWidth = STROKE * SUPERSAMPLE;
+  modelCtx.lineCap = "round";
+  modelCtx.lineJoin = "round";
+  for (const stroke of strokes) {
+    modelCtx.beginPath();
+    if (stroke.length === 1) {
+      const [x, y] = at(stroke[0]);
+      modelCtx.arc(x, y, (STROKE * SUPERSAMPLE) / 2, 0, Math.PI * 2);
+      modelCtx.fill();
+      continue;
+    }
+    modelCtx.moveTo(...at(stroke[0]));
+    for (let i = 1; i < stroke.length; i++) modelCtx.lineTo(...at(stroke[i]));
+    modelCtx.stroke();
   }
-  return pixels;
+  const { data } = modelCtx.getImageData(0, 0, size, size);
+  const ink = new Float32Array(MODEL * MODEL);
+  for (let y = 0; y < size; y++) {
+    const row = Math.floor(y / SUPERSAMPLE) * MODEL;
+    for (let x = 0; x < size; x++) {
+      ink[row + Math.floor(x / SUPERSAMPLE)] += data[(y * size + x) * 4];
+    }
+  }
+  for (let i = 0; i < ink.length; i++) ink[i] /= 255 * SUPERSAMPLE * SUPERSAMPLE;
+  return ink;
+}
+
+// Prepare the drawing the way MNIST prepared its digits: fit the longer side
+// into a 20px box, then shift so the centre of mass sits in the middle.
+function modelInput() {
+  const points = strokes.flat();
+  if (points.length === 0) return null;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const scale = (BOX - STROKE) / Math.max(maxX - minX, maxY - minY, 1);
+  const offsetX = MODEL / 2 - ((minX + maxX) / 2) * scale;
+  const offsetY = MODEL / 2 - ((minY + maxY) / 2) * scale;
+
+  let ink = renderStrokes(scale, offsetX, offsetY);
+  let mass = 0;
+  let massX = 0;
+  let massY = 0;
+  for (let i = 0; i < ink.length; i++) {
+    mass += ink[i];
+    massX += ink[i] * ((i % MODEL) + 0.5);
+    massY += ink[i] * (Math.floor(i / MODEL) + 0.5);
+  }
+  if (mass > 0) {
+    ink = renderStrokes(scale, offsetX + MODEL / 2 - massX / mass, offsetY + MODEL / 2 - massY / mass);
+  }
+  // The model was trained on pixels scaled to [-1, 1]: background -1, ink +1.
+  return ink.map((v) => v * 2 - 1);
 }
 
 function setStatus(text, cls) {
@@ -162,6 +236,8 @@ function setStatus(text, cls) {
 
 canvas.addEventListener("mousedown", startDraw);
 canvas.addEventListener("mousemove", moveDraw);
+canvas.addEventListener("mouseleave", endDraw);
+canvas.addEventListener("mouseenter", resumeDraw);
 window.addEventListener("mouseup", endDraw);
 canvas.addEventListener("touchstart", startDraw, { passive: false });
 canvas.addEventListener("touchmove", moveDraw, { passive: false });
@@ -170,6 +246,11 @@ window.addEventListener("touchend", endDraw);
 clearBtn.addEventListener("click", clearCanvas);
 
 predictBtn.addEventListener("click", () => {
+  const pixels = modelInput();
+  if (!pixels) {
+    setStatus("Draw a digit first", "");
+    return;
+  }
   predictBtn.disabled = true;
   setStatus("Loading...", "generating");
 
@@ -198,7 +279,7 @@ predictBtn.addEventListener("click", () => {
   };
 
   w.addEventListener("message", onMessage);
-  w.postMessage({ type: "predict", pixels: samplePixels() });
+  w.postMessage({ type: "predict", pixels });
 });
 
 clearCanvas();

@@ -128,8 +128,7 @@ canvas:focus-visible {
   height: auto;
 }
 
-.header-link,
-.site-footer a {
+.header-link {
   color: var(--color-ink);
   font-size: 14px;
   font-weight: 500;
@@ -138,14 +137,12 @@ canvas:focus-visible {
   transition: color var(--motion-fast), text-decoration-color var(--motion-fast);
 }
 
-.header-link:hover,
-.site-footer a:hover {
+.header-link:hover {
   color: var(--color-cocoa);
   text-decoration-color: var(--color-cocoa);
 }
 
-.header-link:active,
-.site-footer a:active {
+.header-link:active {
   color: var(--color-cocoa-dark);
 }
 
@@ -172,14 +169,6 @@ h2 {
   font-size: 22px;
   font-weight: 600;
   line-height: 1.2;
-}
-
-.site-footer {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding-block: var(--space-6);
-  border-top: 1px solid var(--color-line);
 }
 
 .hub-main {
@@ -858,12 +847,6 @@ input[type="range"]:disabled {
 
   .hidden-heading-row p {
     margin-top: var(--space-1);
-  }
-
-  .site-footer {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--space-2);
   }
 }
 

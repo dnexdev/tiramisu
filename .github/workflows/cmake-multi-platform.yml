@@ -65,7 +65,9 @@ jobs:
       run: ctest --output-on-failure
 
   cuda-compile:
-    runs-on: ubuntu-latest
+    # NVIDIA publishes no CUDA 12.x packages for Ubuntu 26.04, which is what
+    # ubuntu-latest became, so this job stays on 24.04 for CUDA 12.6.
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
     - name: Install Ninja
